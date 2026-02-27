@@ -1,0 +1,41 @@
+Gostaria de sua ajuda para desenvolver um sistema web utilizando Python. O problema é o seguinte:
+1) Tenho 2 fábricas de esmagamento de soja que produzem farelo e óleo, distantes entre si por aproximadamente 500km, que recebem soja de armazéns e diretamente do produtor. Cada uma dessas fábricas tem:
+- Capacidade de armazenagem estática de soja em toneladas;
+- Capacidade de esmagamento em toneladas por dia;
+- Capacidade de recebimento de soja por dia em toneladas por dia;
+- Capacidade de recepção de caminhões vindo dos produtores e dos transbordos dos armazéns - limite máximo de caminhões permitido nos pátios das fábricas, com capacidade média de carga por cada caminhão em toneladas;
+- Previsão de recebimento mensal direto do produtor em toneladas por mês;
+- Estoque inicial em d0;
+- Cálculo: estoque diário estimado = estoque do dia anterior (ou estoque inicial em d0) + previsão de recebimento direto + transferências dos armazéns - esmagamento diário
+- Diariamente o estoque real poderá ser revisado, para se atualizar os cálculos e comparar previsto x realizado;
+- Diariamente a quantidade de caminhões em espera para ser descarregados deve ser informada para se atualizar os cálculos e comparar previsto x realizado;
+- Restrição: O recebimento diário não pode exceder a quantidade de caminhões máxima permitida;
+- Restrição: O recebimento diário não pode exceder a capacidade de armazenamento estático;
+2) Existem 42 armazens que poderão abastecer essas fábricas, que recebem soja diretamente do produtor e também vendem essa soja para o mercado. Cada um desses armazém tem:
+- Distância (em Km) e um custo de frete (R$/Ton) entre o armazem e as fábricas;
+- Capacidade estática de soja em toneladas;
+- Capacidade de expedição diária de soja em toneladas por dia;
+- A expedição diária de soja será realizada em veículos com carga média estimada;
+- Previsão de recebimento total na safra em toneladas;
+- Previsão de recebimento diário direto do produtor em toneladas por dia;
+- Previsão de vendas totais na safra em toneladas;
+- Previsão de vendas diárias para o mercado em toneladas por dia;
+- Estoque inicial em d0;
+- Calculo: estoque diário = estoque do dia anterior (ou estoque inicial em d0) + previsão de recebimento - previsão de vendas - transferências para as fábricas; o calculo de limitado a capacidade estática; o cálculo de estoque não pode ficar negativo; o cálculo do estoque não deve considerar a previsão de recebimento diária caso a somatória de todos os recebimentos tenha atingido a previsão de recebimento total; o cálculo não deve considerar a previsão de vendas diária se a somatória de todas as vendas tenha atingido a previsão de vendas total;
+- Cálculo: número necessários de veículos diariamente;
+- Diariamente o estoque real poderá ser revisado, para se atualizar os cálculos e comparar previsto x realizado;
+- Restrição: a expedição diária não pode exceder a capacidade de expedição diária;
+- Restrição: a expedição diária não pode exceder a quantidade em estoque;
+- Restrição: armazéns com estoque zerado não fornecem soja para as fábricas;
+3) A interface do usuário do sistema deve ser um dashboard, com funcionalidade principal de mostrar a movimentação de cargas entre os armazéns e as fábricas, utilizando Streamlit ou Plotly Dash ou Bokeh/Panel, o que for mais aderente as necessidades do sistema;
+4) O dashboard deve ter a capacidade de carregar os dos das capacidades, estoques e previsões e mostrar o resultado da carga em tabelas;
+5) O sistema deverá receber os dados de capacidades, previsões e limites restritivos via arquivo de carga de dados em .xlsx, que deverá ser especificado para se realizar as cargas de dados, tanto das fábricas, como dos armazéns;
+6) O sistema deverá receber as atualizações de estoque real via arquivo de carga de dados em .xlsx, que deverá ser especificado;
+7) O sistema deverá calcular:
+- Diariamente, até o final dos estoques dos armazéns, as origem e destino das cargas entre armazéns e fábricas, seguindo a métrica de menor custo de frete;
+- Diariamente, até o final dos estoques dos armazéns, os estoques previstos nos armazéns e nas fábricas;
+- Diariamente, até o final dos estoques dos armazéns, a quantidade de caminhões que ficarão em espera para serem descarregados nas fábricas.
+9) O dashboard deve apresentar os resultados das cargas e cálculos e permitir filtros por período, fábricas e armazéns;
+10) O dashboard deverá conter painéis de comparação entre previsto e realizado;
+11) As cargas dos arquivos de carga serão realizadas em banco de dados Postgresql;
+12) Gerar repositório GIT, todos os códigos necessários em Python, todos os templates para serem preenchidos com as cargas, todas as tabelas necessárias.
