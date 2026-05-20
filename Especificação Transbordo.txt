@@ -1,41 +1,62 @@
-Gostaria de sua ajuda para desenvolver um sistema web utilizando Python. O problema é o seguinte:
-1) Tenho 2 fábricas de esmagamento de soja que produzem farelo e óleo, distantes entre si por aproximadamente 500km, que recebem soja de armazéns e diretamente do produtor. Cada uma dessas fábricas tem:
-- Capacidade de armazenagem estática de soja em toneladas;
-- Capacidade de esmagamento em toneladas por dia;
-- Capacidade de recebimento de soja por dia em toneladas por dia;
-- Capacidade de recepção de caminhões vindo dos produtores e dos transbordos dos armazéns - limite máximo de caminhões permitido nos pátios das fábricas, com capacidade média de carga por cada caminhão em toneladas;
-- Previsão de recebimento mensal direto do produtor em toneladas por mês;
-- Estoque inicial em d0;
-- Cálculo: estoque diário estimado = estoque do dia anterior (ou estoque inicial em d0) + previsão de recebimento direto + transferências dos armazéns - esmagamento diário
-- Diariamente o estoque real poderá ser revisado, para se atualizar os cálculos e comparar previsto x realizado;
-- Diariamente a quantidade de caminhões em espera para ser descarregados deve ser informada para se atualizar os cálculos e comparar previsto x realizado;
-- Restrição: O recebimento diário não pode exceder a quantidade de caminhões máxima permitida;
-- Restrição: O recebimento diário não pode exceder a capacidade de armazenamento estático;
-2) Existem 42 armazens que poderão abastecer essas fábricas, que recebem soja diretamente do produtor e também vendem essa soja para o mercado. Cada um desses armazém tem:
-- Distância (em Km) e um custo de frete (R$/Ton) entre o armazem e as fábricas;
-- Capacidade estática de soja em toneladas;
-- Capacidade de expedição diária de soja em toneladas por dia;
-- A expedição diária de soja será realizada em veículos com carga média estimada;
-- Previsão de recebimento total na safra em toneladas;
-- Previsão de recebimento diário direto do produtor em toneladas por dia;
-- Previsão de vendas totais na safra em toneladas;
-- Previsão de vendas diárias para o mercado em toneladas por dia;
-- Estoque inicial em d0;
-- Calculo: estoque diário = estoque do dia anterior (ou estoque inicial em d0) + previsão de recebimento - previsão de vendas - transferências para as fábricas; o calculo de limitado a capacidade estática; o cálculo de estoque não pode ficar negativo; o cálculo do estoque não deve considerar a previsão de recebimento diária caso a somatória de todos os recebimentos tenha atingido a previsão de recebimento total; o cálculo não deve considerar a previsão de vendas diária se a somatória de todas as vendas tenha atingido a previsão de vendas total;
-- Cálculo: número necessários de veículos diariamente;
-- Diariamente o estoque real poderá ser revisado, para se atualizar os cálculos e comparar previsto x realizado;
-- Restrição: a expedição diária não pode exceder a capacidade de expedição diária;
-- Restrição: a expedição diária não pode exceder a quantidade em estoque;
-- Restrição: armazéns com estoque zerado não fornecem soja para as fábricas;
-3) A interface do usuário do sistema deve ser um dashboard, com funcionalidade principal de mostrar a movimentação de cargas entre os armazéns e as fábricas, utilizando Streamlit ou Plotly Dash ou Bokeh/Panel, o que for mais aderente as necessidades do sistema;
-4) O dashboard deve ter a capacidade de carregar os dos das capacidades, estoques e previsões e mostrar o resultado da carga em tabelas;
-5) O sistema deverá receber os dados de capacidades, previsões e limites restritivos via arquivo de carga de dados em .xlsx, que deverá ser especificado para se realizar as cargas de dados, tanto das fábricas, como dos armazéns;
-6) O sistema deverá receber as atualizações de estoque real via arquivo de carga de dados em .xlsx, que deverá ser especificado;
-7) O sistema deverá calcular:
-- Diariamente, até o final dos estoques dos armazéns, as origem e destino das cargas entre armazéns e fábricas, seguindo a métrica de menor custo de frete;
-- Diariamente, até o final dos estoques dos armazéns, os estoques previstos nos armazéns e nas fábricas;
-- Diariamente, até o final dos estoques dos armazéns, a quantidade de caminhões que ficarão em espera para serem descarregados nas fábricas.
-9) O dashboard deve apresentar os resultados das cargas e cálculos e permitir filtros por período, fábricas e armazéns;
-10) O dashboard deverá conter painéis de comparação entre previsto e realizado;
-11) As cargas dos arquivos de carga serão realizadas em banco de dados Postgresql;
-12) Gerar repositório GIT, todos os códigos necessários em Python, todos os templates para serem preenchidos com as cargas, todas as tabelas necessárias.
+Gostaria de sua ajuda para desenvolver um sistema web de planejamento de recebimento de soja de produtores e transbordo de soja entre fábricas e armazéns, utilizando Python. O problema é o seguinte:
+1. Tenho 2 fábricas de esmagamento de soja que produzem farelo e óleo, distantes entre si por aproximadamente 200km, que recebem soja de armazéns e diretamente do produtor. Cada uma dessas fábricas tem:
+1.1 Capacidades para Planejamento:
+1.1.1 Capacidade de armazenagem estática da fábrica de soja em toneladas;
+1.1.2 Capacidade de esmagamento de soja diária fábrica em toneladas por dia;
+1.1.3 Capacidade de recebimento de soja diária na fábrica em toneladas por dia;
+1.1.4 Capacidade de recepção de caminhões ou o limite máximo de caminhões permitido nos pátios das fábricas, com capacidade média de carga por cada caminhão em toneladas;
+1.2 Previsões para Planejamento:
+1.2.1 Período de safra em meses, discriminando as datas de safra, do início até o final da safra;
+1.2.2 Previsão de recebimento mensal direto do produtor em toneladas por mês de safra - a fábrica também é um armazém do produtor;
+1.2.3 Previsão de recebimento diário de transbordo vindo de todos os armazéns em toneladas por dia;
+1.2.4 Previsão de vendas mensal, para todos os meses;
+1.2.5 Durante a safra as fábricas recebem soja 24h x 7 dias;
+1.2.6 Fora do período da safra as fábricas recebem soja 18h x 6 dias;
+1.2.7 Estoque inicial em d0;
+1.3 Restrições para Planejamento:
+1.3.1 Restrição: O recebimento diário não pode exceder a quantidade de caminhões máxima permitida;
+1.3.2 Restrição: O recebimento diário não pode exceder a capacidade de armazenamento estático;
+1.4 Cálculos para Planejamento:
+1.4.1 Estoque mês a mês, a partir do primeiro mês de safra até o final dos estoques das fábricas: volume recebido do produtores + volume recebido pelos transbordo - volume esmagado;
+1.4.2 Volume recebido dos armazéns, conforme otimização realizada;
+2. Existem 18 armazéns, incluindo os armazéns das fábricas, que recebem localmente soja dos produtores cooperados e fornecem soja para os armazéns através de transbordo, sendo que cada um desses armazéns tem:
+2.1 Capacidades para Planejamento:
+2.1.1 Capacidade de armazenamento estática de soja em toneladas;
+2.1.2 Capacidade de expedição diária de soja para as fábricas;
+2.1.3 A expedição diária de soja será realizada em veículos com carga média estimada;
+2.2 Previsões para Planejamento:
+2.2.1 Período de safra em meses, discriminando as datas de safra, do início até o final da safra;
+2.2.2 Previsão de recebimento mensal direto do produtor em toneladas por mês de safra;
+2.2.3 Previsão de vendas mensal, para todos os meses;
+2.2.4 Distância (em Km) e um custo de frete (R$/Ton) entre o armazém e as fábricas;
+2.2.5 Estoque inicial em d0;
+2.3 Restrições para Planejamento:
+2.3.1 Restrição: o volume para expedição diária não pode exceder a capacidade de expedição diária;
+2.3.2 Restrição: o volume para expedição diária não pode exceder a quantidade em estoque;
+2.3.3 Restrição: armazéns com estoque zerado não fornecem soja para as fábricas;
+2.4 Cálculos para Planejamento dos armazéns:
+2.4.1 Estoque mensal, a partir do primeiro mês de safra até o final dos estoques do armazém dado por: volume recebido do produtores - volume de vendas - volume a ser transbordado para os armazéns;
+2.4.2 Volume mensal a ser enviado para as fábricas, conforme otimização realizada;
+3. Transbordo: diariamente soja deverá ser enviada dos armazéns para as fábricas, para garantir um volume suficiente de esmagamento, res
+3.1 Os armazéns servem de pulmão para as fábricas;
+3.2 Durante a safra deve ser movimentada soja dos armazéns para as fábricas de modo a garantir espaço disponível nos armazéns para o recebimento de soja do produtor;
+3.3 Os trajetos entre armazéns e fábricas devem ser calculados de modo a otimizar o custo do frete;
+3.4 As restrições de capacidades de expedição dos armazéns e recebimento das fábricas deve ser respeitada;
+3.5 Devem ser analisadas as inviabilidades de transferência entre os armazéns e as fábricas e identificar qual o gargalo (expedição do armazém ou recebimento da fábrica);
+4. O sistema deverá:
+4.1 Providenciar rotinas para implementar todos os cálculos, análises, rotas e otimizações necessárias em "Google OR-Tools" ou outro mecanismo de otimização que seja eficiente para o problema;
+4.2 Dado que exitem dados diários (capacidade de esmagamento, recebimento de transbordo) e previsões mensais (recebimento do produtor, vendas), converter as previsões mensais em médias diárias para o motor de otimização, ou a trabalhar com um horizonte de planejamento que harmonize essas duas grandezas.
+4.3 Armazenar os dados em banco de dados Postgresql;
+4.4 Poder criar as tabelas automaticamente, caso ainda não existam;
+4.5 Toda a carga realizada deve sobreescrever as linhas já existentes inserir as linhas novas;
+4.6 Toda a carga realizada deve ter como mostrar numa página qual foi o conteúdo armazenado na base de dados;
+4.7 Ser todo em portugues brasileiro, inclusive nomes de tabelas e campos;
+4.8 Carregar os dados via arquivo de carga de dados em .xlsx;
+4.9 As colunas devem ter seus nomes padronizados para evitar nomenclaturas distintas e várias partes dos códigos;
+4.10 Providenciar templates para as cargas de dados;
+4.11 A interface do usuário do sistema deve ser um dashboard, com funcionalidade principal de mostrar a movimentação de cargas entre os armazéns e as fábricas, utilizando Streamlit ou Plotly Dash ou Bokeh/Panel, o que for mais aderente as necessidades do sistema;
+4.12 O dashboard deve ter a capacidade de carregar os dos das capacidades, estoques e previsões e mostrar o resultado das cargas de dados em páginas web mostrando o conteúdo da base de dados que foi carregada;
+4.13 O sistema deverá receber os dados de capacidades, previsões e limites restritivos via arquivo de carga de dados em .xlsx, que deverá ser especificado para se realizar as cargas de dados, tanto das fábricas, como dos armazéns;
+4.14 O dashboard deve apresentar os resultados das cargas e cálculos e permitir filtros por período, fábricas e armazéns;
+4.15 Usar de um Diagrama de Sankey ou um Mapa de Fluxo no Plotly para visualizar de qual armazém a soja está saindo e para qual fábrica está indo.
+4.16 Gerar repositório GIT, todos os códigos necessários em Python, todos os templates para serem preenchidos com as cargas, todas as tabelas necessárias.

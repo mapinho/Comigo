@@ -1,44 +1,45 @@
-# Sistema de Gestão de Transbordo de Soja
+# Sistema de Planejamento de Transbordo - Comigo
 
-Este sistema web foi desenvolvido utilizando Python e Streamlit para gerenciar a logística e estoques de fábricas de esmagamento de soja e armazéns.
+Este sistema otimiza a distribuição diária de soja entre armazéns e fábricas para minimizar o custo total de frete, respeitando limites de estoque e esmagamento.
 
-## Funcionalidades
-- Dashboard para acompanhamento de movimentação de cargas, previsões de estoque e caminhões em espera.
-- Comparativo entre o previsto e realizado (estoques e caminhões).
-- Carga de dados iniciais e atualizações de estoques reais via planilhas `.xlsx`.
-- Algoritmo de simulação diária que calcula transferências dos armazéns para as fábricas otimizando pelo menor custo de frete.
-- Utilização de banco de dados PostgreSQL.
+## Tecnologias Utilizadas
+- **Python 3.10+**
+- **Streamlit** (Interface do Usuário)
+- **Google OR-Tools** (Motor de Otimização)
+- **SQLAlchemy** (ORM)
+- **PostgreSQL** (Banco de Dados)
+- **Pandas/Plotly** (Processamento e Visualização)
 
-## Configuração do Ambiente
+## Como Rodar
 
-1. Certifique-se de ter Docker, Docker Compose e Python 3.10+ instalados.
-2. Inicie o banco de dados via Docker:
-   ```bash
-   docker-compose up -d
-   ```
-3. Crie e ative um ambiente virtual:
-   ```bash
-   python -m venv .venv
-   # Windows
-   .venv\Scripts\activate
-   # Linux/Mac
-   source .venv/bin/activate
-   ```
-4. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
-5. Rode a aplicação Streamlit:
-   ```bash
-   streamlit run app.py
-   ```
+1.  **Configurar o Banco de Dados:**
+    Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
+    ```env
+    DB_USER=seu_usuario
+    DB_PASSWORD=sua_senha
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_NAME=comigo
+    ```
 
-O sistema criará automaticamente as tabelas no banco de dados e os templates do Excel necessários na primeira execução.
+2.  **Instalar Dependências:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-## Estrutura do Projeto
-- `app.py`: Interface do dashboard Streamlit.
-- `models.py`: Modelos SQLAlchemy (Fábricas, Armazéns, Históricos e Rotas).
-- `data_loader.py`: Lógica para ler e inserir dados das planilhas para o DB.
-- `calculations.py`: Motor de simulação diária das restrições e transferências.
-- `generate_templates.py`: Script gerador de modelos Excel.
-- `docker-compose.yml`: Configuração do banco Postgres.
+3.  **Gerar Templates (Opcional):**
+    ```bash
+    python generate_templates.py
+    ```
+
+4.  **Executar o Sistema:**
+    ```bash
+    streamlit run app.py
+    ```
+
+## Estrutura de Arquivos
+- `app.py`: Interface Streamlit.
+- `models.py`: Definições das tabelas em português (SQLAlchemy).
+- `calculations.py`: Lógica de otimização com OR-Tools.
+- `data_loader.py`: Carregamento de dados XLSX para o Postgres.
+- `templates/`: Modelos de arquivos Excel para carga de dados.
