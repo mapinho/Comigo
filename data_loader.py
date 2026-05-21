@@ -11,84 +11,93 @@ if os.path.exists(".env"):
     load_dotenv()
 
 def get_engine():
-    # 1. Tenta pegar do st.secrets (Prioridade Máxima no Streamlit Cloud)
+    # 1. Busca no st.secrets
     user, password, host, port, db = None, None, None, None, None
     url = None
-    config_found = False
+    source = "Nenhum"
     
     try:
-        # Debug: Listar chaves disponiveis no secrets (sem valores)
         if hasattr(st, "secrets"):
-            keys = list(st.secrets.keys())
             if "postgres" in st.secrets:
                 s = st.secrets["postgres"]
-                # Suporta tanto a URI completa quanto campos individuais
                 if "uri" in s:
                     url = s["uri"]
-                    config_found = True
-                elif all(k in s for k in ["user", "password", "host", "database"]):
-                    user = s["user"]
-                    password = s["password"]
-                    host = s["host"]
+                    source = "Streamlit Secrets (URI)"
+                else:
+                    user = s.get("user")
+                    password = s.get("password")
+                    host = s.get("host")
                     port = str(s.get("port", "5432"))
-                    db = s["database"]
-                    config_found = True
-    except Exception as e:
-        print(f"[DEBUG] Erro ao ler st.secrets: {e}")
+                    db = s.get("database")
+                    source = "Streamlit Secrets (Campos)"
+            elif "DATABASE_URL" in st.secrets:
+                url = st.secrets["DATABASE_URL"]
+                source = "Streamlit Secrets (DATABASE_URL)"
+    except Exception:
+        pass
 
-    # 2. Se não encontrou na nuvem, tenta no ambiente local (.env ou OS)
-    if not config_found:
+    # 2. Busca no ambiente (Local ou OS)
+    if not url and not all([user, password, host, db]):
         user = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
         host = os.getenv("DB_HOST")
-        port = os.getenv("DB_PORT", "5432")
+        port = os.getenv("DB_PORT")
         db = os.getenv("DB_NAME")
-        if user and password and host and db:
-            config_found = True
-    
-    # 3. Fallback final
-    if not config_found:
-        # Se estiver no Streamlit Cloud e chegar aqui, algo está errado com os Secrets
-        if os.getenv("STREAMLIT_RUNTIME_ENV") or "STREAMLIT_SERVER_PORT" in os.environ:
-             raise ConnectionError("O aplicativo não encontrou as chaves no 'Streamlit Secrets'. Verifique o formato TOML.")
+        if user and host and db:
+            source = "Variáveis de Ambiente"
+
+    # 3. Tratamento de Fallback
+    if not url and not all([user, password, host, db]):
+        # Estamos no Streamlit Cloud? (STREAMLIT_SERVER_PORT costuma existir)
+        is_cloud = os.getenv("STREAMLIT_RUNTIME_ENV") or "STREAMLIT_SERVER_PORT" in os.environ
         
-        # Padrão local (desenvolvimento)
+        if is_cloud:
+            # Na nuvem, não permitimos fallback para localhost para evitar erro confuso
+            raise ConnectionError("Secrets não detectados. Verifique se salvou o bloco [postgres] no painel do Streamlit Cloud.")
+        
+        # Fallback apenas para DESENVOLVIMENTO LOCAL
         user, password, host, port, db = "comigo", "Comigo36908!", "localhost", "5432", "comigo"
+        source = "Padrão Local (Desenvolvimento)"
 
     if not url:
         import urllib.parse
-        safe_user = urllib.parse.quote_plus(str(user))
-        safe_password = urllib.parse.quote_plus(str(password))
-        url = f"postgresql://{safe_user}:{safe_password}@{host}:{port}/{db}"
+        u = urllib.parse.quote_plus(str(user))
+        p = urllib.parse.quote_plus(str(password))
+        url = f"postgresql://{u}:{p}@{host}:{port}/{db}"
 
-    # Dialeto Postgres e SSL
+    # Dialeto e SSL (Aiven exige SSL)
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     
     if "sslmode" not in url:
         url += ("&" if "?" in url else "?") + "sslmode=require"
         
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(url, pool_pre_ping=True), source
 
 def init_db():
     try:
-        engine = get_engine()
-        # Testa a conexao antes de tentar criar tabelas
+        engine, source = get_engine()
+        # Ping de teste
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         Base.metadata.create_all(engine)
         return sessionmaker(bind=engine)()
     except Exception as e:
         st.error("### ❌ Erro de Conexão com o Banco de Dados")
-        st.info("Não foi possível conectar ao PostgreSQL no Aiven. Verifique os passos abaixo:")
-        st.markdown(f"""
-        1.  **Firewall do Aiven (OBRIGATÓRIO):** Vá ao painel do Aiven.io, entre no seu serviço PostgreSQL, procure por **'Allowed IP addresses'** e adicione o IP `0.0.0.0/0`. Sem isso, o Streamlit Cloud é bloqueado.
-        2.  **Streamlit Secrets:** Verifique se as credenciais [postgres] no painel do Streamlit Cloud estão idênticas às do Aiven.
-        3.  **SSL Mode:** O sistema já está tentando conectar com `sslmode=require`.
         
-        **Erro Técnico detalhado:**
-        `{str(e)}`
-        """)
+        # Painel de Diagnóstico para o Usuário
+        st.write(f"**Origem das credenciais detectada:** `{source if 'source' in locals() else 'Erro antes da detecção'}`")
+        
+        with st.expander("🔍 Painel de Diagnóstico (Ajuda no Debug)"):
+            if hasattr(st, "secrets"):
+                st.write("Chaves presentes no seu `st.secrets`:", list(st.secrets.keys()))
+                if "postgres" in st.secrets:
+                    st.write("Sub-chaves em `[postgres]`:", list(st.secrets["postgres"].keys()))
+            
+            st.info("Se a lista acima estiver vazia ou não contiver 'postgres', o Streamlit não está lendo seus segredos.")
+            st.write("**Erro Técnico:**")
+            st.code(str(e))
+        
         st.stop()
         return None
 
