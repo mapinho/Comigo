@@ -14,60 +14,59 @@ def get_engine():
     # 1. Tenta pegar do st.secrets (Prioridade Máxima no Streamlit Cloud)
     user, password, host, port, db = None, None, None, None, None
     url = None
+    config_found = False
     
     try:
+        # Debug: Listar chaves disponiveis no secrets (sem valores)
         if hasattr(st, "secrets"):
+            keys = list(st.secrets.keys())
             if "postgres" in st.secrets:
                 s = st.secrets["postgres"]
-                user = s.get("user")
-                password = s.get("password")
-                host = s.get("host")
-                port = str(s.get("port", "5432"))
-                db = s.get("database")
-            elif "DATABASE_URL" in st.secrets:
-                url = st.secrets["DATABASE_URL"]
-    except Exception:
-        pass
+                # Suporta tanto a URI completa quanto campos individuais
+                if "uri" in s:
+                    url = s["uri"]
+                    config_found = True
+                elif all(k in s for k in ["user", "password", "host", "database"]):
+                    user = s["user"]
+                    password = s["password"]
+                    host = s["host"]
+                    port = str(s.get("port", "5432"))
+                    db = s["database"]
+                    config_found = True
+    except Exception as e:
+        print(f"[DEBUG] Erro ao ler st.secrets: {e}")
 
-    # 2. Se não encontrou na nuvem, tenta no ambiente local (.env)
-    if not url and not all([user, password, host, db]):
+    # 2. Se não encontrou na nuvem, tenta no ambiente local (.env ou OS)
+    if not config_found:
         user = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
         host = os.getenv("DB_HOST")
         port = os.getenv("DB_PORT", "5432")
         db = os.getenv("DB_NAME")
+        if user and password and host and db:
+            config_found = True
     
-    # 3. Fallback final para evitar 'localhost' na nuvem se nada for configurado
-    if not url and not all([user, password, host, db]):
-        # Se estiver no Streamlit Cloud (verificado por variável de ambiente do sistema)
-        # e não tiver credenciais, forçamos um erro amigável em vez de tentar localhost
+    # 3. Fallback final
+    if not config_found:
+        # Se estiver no Streamlit Cloud e chegar aqui, algo está errado com os Secrets
         if os.getenv("STREAMLIT_RUNTIME_ENV") or "STREAMLIT_SERVER_PORT" in os.environ:
-             raise ConnectionError("Credenciais do banco de dados não configuradas no Streamlit Secrets.")
+             raise ConnectionError("O aplicativo não encontrou as chaves no 'Streamlit Secrets'. Verifique o formato TOML.")
         
-        # Padrão para desenvolvimento local apenas
-        user = user or "comigo"
-        password = password or "Comigo36908!"
-        host = host or "localhost"
-        db = db or "comigo"
+        # Padrão local (desenvolvimento)
+        user, password, host, port, db = "comigo", "Comigo36908!", "localhost", "5432", "comigo"
 
     if not url:
-        # Codifica para aceitar caracteres especiais na senha (comum no Aiven)
         import urllib.parse
         safe_user = urllib.parse.quote_plus(str(user))
         safe_password = urllib.parse.quote_plus(str(password))
         url = f"postgresql://{safe_user}:{safe_password}@{host}:{port}/{db}"
 
-    # Correção de dialeto e SSL obrigatório para nuvem
+    # Dialeto Postgres e SSL
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     
     if "sslmode" not in url:
-        sep = "&" if "?" in url else "?"
-        url += f"{sep}sslmode=require"
-    
-    # Log de diagnóstico mascarado
-    masked_host = host if host else url.split("@")[-1].split("/")[0]
-    print(f"[DATABASE] Conectando ao host: {masked_host}")
+        url += ("&" if "?" in url else "?") + "sslmode=require"
         
     return create_engine(url, pool_pre_ping=True)
 
