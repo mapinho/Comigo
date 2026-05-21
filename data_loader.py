@@ -46,9 +46,23 @@ def get_engine():
     return create_engine(url, pool_pre_ping=True)
 
 def init_db():
-    engine = get_engine()
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)()
+    try:
+        engine = get_engine()
+        # Testa a conexao antes de tentar criar tabelas
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)()
+    except Exception as e:
+        st.error("### ❌ Erro de Conexão com o Banco de Dados")
+        st.info("Não foi possível conectar ao PostgreSQL no Aiven. Verifique:")
+        st.markdown("""
+        1. **Firewall do Aiven:** No painel do Aiven.io, adicione `0.0.0.0/0` em 'Allowed IP addresses'.
+        2. **Streamlit Secrets:** Verifique se as credenciais TOML estão preenchidas corretamente nas configurações do App.
+        3. **Erro Técnico:** `{}`
+        """.format(str(e)))
+        st.stop()
+        return None
 
 def upgrade_db():
     engine = get_engine()
