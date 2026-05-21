@@ -11,13 +11,15 @@ if os.path.exists(".env"):
     load_dotenv()
 
 def get_engine():
-    # 1. Busca no st.secrets
+    # 1. Busca no st.secrets (forma segura para evitar erro local)
     user, password, host, port, db = None, None, None, None, None
     url = None
     source = "Nenhum"
     
+    # Verifica se st.secrets existe e não está vazio para evitar o crash local
     try:
-        if hasattr(st, "secrets"):
+        # A forma mais segura de checar sem disparar exceção no Streamlit novo:
+        if st.secrets.load_if_toml_exists(): # Apenas se houver segredos reais
             if "postgres" in st.secrets:
                 s = st.secrets["postgres"]
                 if "uri" in s:
@@ -30,32 +32,28 @@ def get_engine():
                     port = str(s.get("port", "5432"))
                     db = s.get("database")
                     source = "Streamlit Secrets (Campos)"
-            elif "DATABASE_URL" in st.secrets:
-                url = st.secrets["DATABASE_URL"]
-                source = "Streamlit Secrets (DATABASE_URL)"
     except Exception:
+        # Se st.secrets falhar (comum localmente sem secrets.toml), ignoramos e seguimos
         pass
 
-    # 2. Busca no ambiente (Local ou OS)
+    # 2. Busca no ambiente (Local via .env ou OS)
     if not url and not all([user, password, host, db]):
         user = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
         host = os.getenv("DB_HOST")
-        port = os.getenv("DB_PORT")
+        port = os.getenv("DB_PORT", "5432")
         db = os.getenv("DB_NAME")
         if user and host and db:
-            source = "Variáveis de Ambiente"
+            source = "Variáveis de Ambiente (.env)"
 
-    # 3. Tratamento de Fallback
+    # 3. Tratamento de Fallback e Identificação de Nuvem
+    is_cloud = os.getenv("STREAMLIT_RUNTIME_ENV") or "STREAMLIT_SERVER_PORT" in os.environ
+    
     if not url and not all([user, password, host, db]):
-        # Estamos no Streamlit Cloud? (STREAMLIT_SERVER_PORT costuma existir)
-        is_cloud = os.getenv("STREAMLIT_RUNTIME_ENV") or "STREAMLIT_SERVER_PORT" in os.environ
-        
         if is_cloud:
-            # Na nuvem, não permitimos fallback para localhost para evitar erro confuso
-            raise ConnectionError("Secrets não detectados. Verifique se salvou o bloco [postgres] no painel do Streamlit Cloud.")
+            raise ConnectionError("Secrets não detectados na nuvem. Verifique o painel do Streamlit.")
         
-        # Fallback apenas para DESENVOLVIMENTO LOCAL
+        # Padrão apenas para DESENVOLVIMENTO LOCAL
         user, password, host, port, db = "comigo", "Comigo36908!", "localhost", "5432", "comigo"
         source = "Padrão Local (Desenvolvimento)"
 
@@ -65,7 +63,7 @@ def get_engine():
         p = urllib.parse.quote_plus(str(password))
         url = f"postgresql://{u}:{p}@{host}:{port}/{db}"
 
-    # Dialeto e SSL (Aiven exige SSL)
+    # Dialeto e SSL
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     
