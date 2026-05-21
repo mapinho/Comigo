@@ -16,15 +16,16 @@ def get_engine():
     
     try:
         if hasattr(st, "secrets") and "postgres" in st.secrets:
-            # Padrão recomendado pelo Streamlit para TOML secrets
             s = st.secrets["postgres"]
             user = s.get("user")
             password = s.get("password")
             host = s.get("host")
-            port = s.get("port", "5432")
+            port = str(s.get("port", "5432"))
             db = s.get("database")
+            if not all([user, password, host, db]):
+                raise KeyError("Alguns campos obrigatorios estao faltando em st.secrets['postgres']")
         else:
-            raise KeyError
+            raise KeyError("Chave 'postgres' nao encontrada em st.secrets")
     except (KeyError, AttributeError, FileNotFoundError):
         user = os.getenv("DB_USER", "comigo")
         password = os.getenv("DB_PASSWORD", "Comigo36908!")
@@ -32,15 +33,17 @@ def get_engine():
         port = os.getenv("DB_PORT", "5432")
         db = os.getenv("DB_NAME", "comigo")
     
-    url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    # Adiciona sslmode=require para compatibilidade obrigatoria com Aiven.io
+    url = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode=require"
     
-    # Algumas plataformas cloud fornecem a URL inteira em uma única variável
+    # Tratamento para DATABASE_URL (caso use Heroku ou similar)
     env_url = os.getenv("DATABASE_URL")
     if env_url:
-        # Corrige erro comum de dialeto 'postgres://' -> 'postgresql://'
         url = env_url.replace("postgres://", "postgresql://", 1)
+        if "?" not in url:
+            url += "?sslmode=require"
         
-    return create_engine(url)
+    return create_engine(url, pool_pre_ping=True)
 
 def init_db():
     engine = get_engine()
