@@ -14,7 +14,6 @@ def get_engine():
     # 1. Tenta pegar do st.secrets (Streamlit Cloud)
     # 2. Se falhar, tenta do os.environ (Local com .env)
     
-    is_cloud = False
     try:
         if hasattr(st, "secrets") and "postgres" in st.secrets:
             s = st.secrets["postgres"]
@@ -23,79 +22,72 @@ def get_engine():
             host = s.get("host")
             port = str(s.get("port", "5432"))
             db = s.get("database")
-            if all([user, password, host, db]):
-                is_cloud = True
-            else:
-                st.warning("⚠️ Alguns campos de 'st.secrets' estao em branco.")
-    except Exception:
-        pass
-
-    if not is_cloud:
+            if not all([user, password, host, db]):
+                raise KeyError("Alguns campos obrigatorios estao faltando em st.secrets['postgres']")
+        else:
+            raise KeyError("Chave 'postgres' nao encontrada em st.secrets")
+    except (KeyError, AttributeError, FileNotFoundError):
         user = os.getenv("DB_USER", "comigo")
         password = os.getenv("DB_PASSWORD", "Comigo36908!")
         host = os.getenv("DB_HOST", "localhost")
         port = os.getenv("DB_PORT", "5432")
         db = os.getenv("DB_NAME", "comigo")
     
-    # Log de diagnóstico (seguro, sem senha)
-    print(f"[DIAGNOSTICO] Tentando conectar ao banco: {db} em {host}:{port} (Ambiente: {'Nuvem' if is_cloud else 'Local'})")
-    
     # Adiciona sslmode=require para compatibilidade obrigatoria com Aiven.io
     url = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode=require"
     
-    # DATABASE_URL fallback
+    # Tratamento para DATABASE_URL (caso use Heroku ou similar)
     env_url = os.getenv("DATABASE_URL")
     if env_url:
         url = env_url.replace("postgres://", "postgresql://", 1)
-        if "?" not in url: url += "?sslmode=require"
+        if "?" not in url:
+            url += "?sslmode=require"
         
     return create_engine(url, pool_pre_ping=True)
 
 def init_db():
     try:
         engine = get_engine()
-        # Testa a conexao de forma silenciosa primeiro
+        # Testa a conexao antes de tentar criar tabelas
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         Base.metadata.create_all(engine)
         return sessionmaker(bind=engine)()
     except Exception as e:
-        st.error("### ❌ Falha na Conexão com o Banco de Dados")
-        st.write("Verifique as configurações no painel do Streamlit Cloud em **Settings > Secrets**.")
+        st.error("### ❌ Erro de Conexão com o Banco de Dados")
+        st.info("Não foi possível conectar ao PostgreSQL no Aiven. Verifique os passos abaixo:")
+        st.markdown(f"""
+        1.  **Firewall do Aiven (OBRIGATÓRIO):** Vá ao painel do Aiven.io, entre no seu serviço PostgreSQL, procure por **'Allowed IP addresses'** e adicione o IP `0.0.0.0/0`. Sem isso, o Streamlit Cloud é bloqueado.
+        2.  **Streamlit Secrets:** Verifique se as credenciais [postgres] no painel do Streamlit Cloud estão idênticas às do Aiven.
+        3.  **SSL Mode:** O sistema já está tentando conectar com `sslmode=require`.
         
-        with st.expander("Clique aqui para ver como preencher o Secrets corretamente"):
-            st.code("""
-[postgres]
-user = "seu_usuario"
-password = "sua_senha"
-host = "seu-host-do-aiven.aivencloud.com"
-port = "sua_porta"
-database = "defaultdb"
-            """, language="toml")
-            st.info("💡 Lembre-se também de ir no painel do Aiven e liberar o IP 0.0.0.0/0.")
-        
-        st.exception(e)
+        **Erro Técnico detalhado:**
+        `{str(e)}`
+        """)
         st.stop()
         return None
 
 def upgrade_db():
-    engine = get_engine()
-    Base.metadata.create_all(engine)
-    with engine.connect() as conn:
-        tables_to_upgrade = [
-            'fabricas', 'armazens', 'rotas', 
-            'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem'
-        ]
-        for table in tables_to_upgrade:
-            try:
-                conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN cenario_id INTEGER REFERENCES cenarios(id) ON DELETE CASCADE;'))
-                conn.commit()
-            except Exception:
-                # Column probably already exists
-                pass
+    try:
+        engine = get_engine()
+        Base.metadata.create_all(engine)
+        with engine.connect() as conn:
+            tables_to_upgrade = [
+                'fabricas', 'armazens', 'rotas', 
+                'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem'
+            ]
+            for table in tables_to_upgrade:
+                try:
+                    conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN cenario_id INTEGER REFERENCES cenarios(id) ON DELETE CASCADE;'))
+                    conn.commit()
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 def clear_database():
     session = init_db()
+    if not session: return False, "Erro ao inicializar banco."
     try:
         # Pega as tabelas na ordem reversa de dependência
         tables = [table.name for table in reversed(Base.metadata.sorted_tables)]
@@ -112,6 +104,7 @@ def clear_database():
 def load_factories(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
+    if not session: return 0
     session.query(Fabrica).filter(Fabrica.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
@@ -137,6 +130,7 @@ def load_factories(file_path):
 def load_warehouses(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
+    if not session: return 0
     session.query(Armazem).filter(Armazem.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
@@ -159,6 +153,7 @@ def load_warehouses(file_path):
 def load_routes(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
+    if not session: return 0, 0
     session.query(Rota).filter(Rota.cenario_id == None).delete()
     count = 0
     skipped = 0
@@ -188,6 +183,7 @@ def load_routes(file_path):
 def load_previsoes(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
+    if not session: return 0, 0
     # Deletar previsões que pertencem a fábricas/armazéns do Baseline
     baseline_fab_ids = [f.id for f in session.query(Fabrica.id).filter(Fabrica.cenario_id == None).all()]
     baseline_arm_ids = [a.id for a in session.query(Armazem.id).filter(Armazem.cenario_id == None).all()]
