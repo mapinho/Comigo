@@ -14,6 +14,7 @@ def get_engine():
     # 1. Tenta pegar do st.secrets (Streamlit Cloud)
     # 2. Se falhar, tenta do os.environ (Local com .env)
     
+    is_cloud = False
     try:
         if hasattr(st, "secrets") and "postgres" in st.secrets:
             s = st.secrets["postgres"]
@@ -22,45 +23,58 @@ def get_engine():
             host = s.get("host")
             port = str(s.get("port", "5432"))
             db = s.get("database")
-            if not all([user, password, host, db]):
-                raise KeyError("Alguns campos obrigatorios estao faltando em st.secrets['postgres']")
-        else:
-            raise KeyError("Chave 'postgres' nao encontrada em st.secrets")
-    except (KeyError, AttributeError, FileNotFoundError):
+            if all([user, password, host, db]):
+                is_cloud = True
+            else:
+                st.warning("⚠️ Alguns campos de 'st.secrets' estao em branco.")
+    except Exception:
+        pass
+
+    if not is_cloud:
         user = os.getenv("DB_USER", "comigo")
         password = os.getenv("DB_PASSWORD", "Comigo36908!")
         host = os.getenv("DB_HOST", "localhost")
         port = os.getenv("DB_PORT", "5432")
         db = os.getenv("DB_NAME", "comigo")
     
+    # Log de diagnóstico (seguro, sem senha)
+    print(f"[DIAGNOSTICO] Tentando conectar ao banco: {db} em {host}:{port} (Ambiente: {'Nuvem' if is_cloud else 'Local'})")
+    
     # Adiciona sslmode=require para compatibilidade obrigatoria com Aiven.io
     url = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode=require"
     
-    # Tratamento para DATABASE_URL (caso use Heroku ou similar)
+    # DATABASE_URL fallback
     env_url = os.getenv("DATABASE_URL")
     if env_url:
         url = env_url.replace("postgres://", "postgresql://", 1)
-        if "?" not in url:
-            url += "?sslmode=require"
+        if "?" not in url: url += "?sslmode=require"
         
     return create_engine(url, pool_pre_ping=True)
 
 def init_db():
     try:
         engine = get_engine()
-        # Testa a conexao antes de tentar criar tabelas
+        # Testa a conexao de forma silenciosa primeiro
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         Base.metadata.create_all(engine)
         return sessionmaker(bind=engine)()
     except Exception as e:
-        st.error("### ❌ Erro de Conexão com o Banco de Dados")
-        st.info("Não foi possível conectar ao PostgreSQL no Aiven. Verifique:")
-        st.markdown("""
-        1. **Firewall do Aiven:** No painel do Aiven.io, adicione `0.0.0.0/0` em 'Allowed IP addresses'.
-        2. **Streamlit Secrets:** Verifique se as credenciais TOML estão preenchidas corretamente nas configurações do App.
-        3. **Erro Técnico:** `{}`
-        """.format(str(e)))
+        st.error("### ❌ Falha na Conexão com o Banco de Dados")
+        st.write("Verifique as configurações no painel do Streamlit Cloud em **Settings > Secrets**.")
+        
+        with st.expander("Clique aqui para ver como preencher o Secrets corretamente"):
+            st.code("""
+[postgres]
+user = "seu_usuario"
+password = "sua_senha"
+host = "seu-host-do-aiven.aivencloud.com"
+port = "sua_porta"
+database = "defaultdb"
+            """, language="toml")
+            st.info("💡 Lembre-se também de ir no painel do Aiven e liberar o IP 0.0.0.0/0.")
+        
+        st.exception(e)
         st.stop()
         return None
 
