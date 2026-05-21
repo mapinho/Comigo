@@ -11,33 +11,35 @@ if os.path.exists(".env"):
     load_dotenv()
 
 def get_engine():
-    # 1. Busca no st.secrets (forma segura para evitar erro local)
+    # 1. Busca no st.secrets (forma segura)
     user, password, host, port, db = None, None, None, None, None
     url = None
     source = "Nenhum"
     
-    # Verifica se st.secrets existe e não está vazio para evitar o crash local
+    config_from_secrets = False
     try:
-        # A forma mais segura de checar sem disparar exceção no Streamlit novo:
-        if st.secrets.load_if_toml_exists(): # Apenas se houver segredos reais
-            if "postgres" in st.secrets:
-                s = st.secrets["postgres"]
-                if "uri" in s:
-                    url = s["uri"]
-                    source = "Streamlit Secrets (URI)"
-                else:
-                    user = s.get("user")
-                    password = s.get("password")
-                    host = s.get("host")
-                    port = str(s.get("port", "5432"))
-                    db = s.get("database")
+        # Tenta acessar postgres de forma ultra segura
+        if st.secrets and "postgres" in st.secrets:
+            s = st.secrets["postgres"]
+            if "uri" in s:
+                url = s["uri"]
+                config_from_secrets = True
+                source = "Streamlit Secrets (URI)"
+            else:
+                user = s.get("user")
+                password = s.get("password")
+                host = s.get("host")
+                port = str(s.get("port", "5432"))
+                db = s.get("database")
+                if user and password and host and db:
+                    config_from_secrets = True
                     source = "Streamlit Secrets (Campos)"
     except Exception:
-        # Se st.secrets falhar (comum localmente sem secrets.toml), ignoramos e seguimos
+        # Localmente sem secrets.toml, st.secrets falha. Ignoramos.
         pass
 
     # 2. Busca no ambiente (Local via .env ou OS)
-    if not url and not all([user, password, host, db]):
+    if not config_from_secrets:
         user = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
         host = os.getenv("DB_HOST")
@@ -83,16 +85,18 @@ def init_db():
     except Exception as e:
         st.error("### ❌ Erro de Conexão com o Banco de Dados")
         
-        # Painel de Diagnóstico para o Usuário
+        # Painel de Diagnóstico Seguro
         st.write(f"**Origem das credenciais detectada:** `{source if 'source' in locals() else 'Erro antes da detecção'}`")
         
         with st.expander("🔍 Painel de Diagnóstico (Ajuda no Debug)"):
-            if hasattr(st, "secrets"):
-                st.write("Chaves presentes no seu `st.secrets`:", list(st.secrets.keys()))
-                if "postgres" in st.secrets:
-                    st.write("Sub-chaves em `[postgres]`:", list(st.secrets["postgres"].keys()))
+            try:
+                if st.secrets:
+                    st.write("Chaves presentes no seu `st.secrets`:", list(st.secrets.keys()))
+                    if "postgres" in st.secrets:
+                        st.write("Sub-chaves em `[postgres]`:", list(st.secrets["postgres"].keys()))
+            except Exception:
+                st.write("Streamlit Secrets não configurado ou inacessível (normal em ambiente local).")
             
-            st.info("Se a lista acima estiver vazia ou não contiver 'postgres', o Streamlit não está lendo seus segredos.")
             st.write("**Erro Técnico:**")
             st.code(str(e))
         
