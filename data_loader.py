@@ -70,7 +70,10 @@ def get_engine():
         url = url.replace("postgres://", "postgresql://", 1)
     
     if "sslmode" not in url:
-        url += ("&" if "?" in url else "?") + "sslmode=require"
+        # Só exige SSL se NÃO for localhost (local costuma não ter SSL configurado)
+        is_local = any(x in url for x in ["@localhost", "@127.0.0.1", "@[::1]"])
+        if not is_local:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
         
     return create_engine(url, pool_pre_ping=True), source
 
