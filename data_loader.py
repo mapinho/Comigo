@@ -22,10 +22,26 @@ def init_db():
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)()
 
+def upgrade_db():
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        tables_to_upgrade = [
+            'fabricas', 'armazens', 'rotas', 
+            'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem'
+        ]
+        for table in tables_to_upgrade:
+            try:
+                conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN cenario_id INTEGER REFERENCES cenarios(id) ON DELETE CASCADE;'))
+                conn.commit()
+            except Exception:
+                # Column probably already exists
+                pass
+
 def clear_database():
     session = init_db()
     try:
-        # Pega as tabelas na ordem reversa de dependência (para evitar problemas de FK, embora o CASCADE ajude)
+        # Pega as tabelas na ordem reversa de dependência
         tables = [table.name for table in reversed(Base.metadata.sorted_tables)]
         for table in tables:
             session.execute(text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;'))
@@ -40,13 +56,14 @@ def clear_database():
 def load_factories(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
-    session.query(Fabrica).delete()
+    session.query(Fabrica).filter(Fabrica.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
         nome = row.get('nome')
         if pd.isna(nome):
             continue
         fabrica = Fabrica(
+            cenario_id=None,
             nome=str(nome).strip(),
             capacidade_estatica=row['capacidade_estatica'],
             capacidade_esmagamento_diaria=row['capacidade_esmagamento_diaria'],
@@ -64,13 +81,14 @@ def load_factories(file_path):
 def load_warehouses(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
-    session.query(Armazem).delete()
+    session.query(Armazem).filter(Armazem.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
         nome = row.get('nome')
         if pd.isna(nome):
             continue
         armazem = Armazem(
+            cenario_id=None,
             nome=str(nome).strip(),
             capacidade_estatica=row['capacidade_estatica'],
             capacidade_expedicao_diaria=row['capacidade_expedicao_diaria'],
@@ -85,18 +103,19 @@ def load_warehouses(file_path):
 def load_routes(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
-    session.query(Rota).delete()
+    session.query(Rota).filter(Rota.cenario_id == None).delete()
     count = 0
     skipped = 0
     for _, row in df.iterrows():
         origem = str(row['origem']).strip()
         destino = str(row['destino']).strip()
 
-        armazem = session.query(Armazem).filter(Armazem.nome == origem).first()
-        fabrica = session.query(Fabrica).filter(Fabrica.nome == destino).first()
+        armazem = session.query(Armazem).filter(Armazem.nome == origem, Armazem.cenario_id == None).first()
+        fabrica = session.query(Fabrica).filter(Fabrica.nome == destino, Fabrica.cenario_id == None).first()
 
         if armazem and fabrica:
             rota = Rota(
+                cenario_id=None,
                 armazem_id=armazem.id,
                 fabrica_id=fabrica.id,
                 distancia_km=row['distancia_km'],
@@ -113,16 +132,20 @@ def load_routes(file_path):
 def load_previsoes(file_path):
     df = pd.read_excel(file_path)
     session = init_db()
-    session.query(PrevisaoFabrica).delete()
-    session.query(PrevisaoArmazem).delete()
+    # Deletar previsões que pertencem a fábricas/armazéns do Baseline
+    baseline_fab_ids = [f.id for f in session.query(Fabrica.id).filter(Fabrica.cenario_id == None).all()]
+    baseline_arm_ids = [a.id for a in session.query(Armazem.id).filter(Armazem.cenario_id == None).all()]
+    session.query(PrevisaoFabrica).filter(PrevisaoFabrica.fabrica_id.in_(baseline_fab_ids)).delete(synchronize_session=False)
+    session.query(PrevisaoArmazem).filter(PrevisaoArmazem.armazem_id.in_(baseline_arm_ids)).delete(synchronize_session=False)
+    
     count = 0
     skipped = 0
     for _, row in df.iterrows():
         nome_entidade = str(row['entidade']).strip()
         mes_ref = pd.to_datetime(row['mes_referencia']).date().replace(day=1)
         
-        # Tenta achar como fabrica
-        fabrica = session.query(Fabrica).filter(Fabrica.nome == nome_entidade).first()
+        # Tenta achar como fabrica no baseline
+        fabrica = session.query(Fabrica).filter(Fabrica.nome == nome_entidade, Fabrica.cenario_id == None).first()
         if fabrica:
             prev = PrevisaoFabrica(
                 fabrica_id=fabrica.id,
@@ -135,8 +158,8 @@ def load_previsoes(file_path):
             count += 1
             continue
             
-        # Tenta achar como armazem
-        armazem = session.query(Armazem).filter(Armazem.nome == nome_entidade).first()
+        # Tenta achar como armazem no baseline
+        armazem = session.query(Armazem).filter(Armazem.nome == nome_entidade, Armazem.cenario_id == None).first()
         if armazem:
             prev = PrevisaoArmazem(
                 armazem_id=armazem.id,
