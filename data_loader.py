@@ -1,20 +1,45 @@
 import pandas as pd
 import os
+import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from models import Base, Fabrica, Armazem, Rota, PrevisaoFabrica, PrevisaoArmazem
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega .env apenas se o arquivo existir (ambiente local)
+if os.path.exists(".env"):
+    load_dotenv()
 
 def get_engine():
-    user = os.getenv("DB_USER", "comigo")
-    password = os.getenv("DB_PASSWORD", "Comigo36908!")
-    host = os.getenv("DB_HOST", "localhost")
-    port = os.getenv("DB_PORT", "5432")
-    db = os.getenv("DB_NAME", "comigo")
+    # 1. Tenta pegar do st.secrets (Streamlit Cloud)
+    # 2. Se falhar, tenta do os.environ (Local com .env)
+    
+    try:
+        if hasattr(st, "secrets") and "postgres" in st.secrets:
+            # Padrão recomendado pelo Streamlit para TOML secrets
+            s = st.secrets["postgres"]
+            user = s.get("user")
+            password = s.get("password")
+            host = s.get("host")
+            port = s.get("port", "5432")
+            db = s.get("database")
+        else:
+            raise KeyError
+    except (KeyError, AttributeError, FileNotFoundError):
+        user = os.getenv("DB_USER", "comigo")
+        password = os.getenv("DB_PASSWORD", "Comigo36908!")
+        host = os.getenv("DB_HOST", "localhost")
+        port = os.getenv("DB_PORT", "5432")
+        db = os.getenv("DB_NAME", "comigo")
     
     url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    
+    # Algumas plataformas cloud fornecem a URL inteira em uma única variável
+    env_url = os.getenv("DATABASE_URL")
+    if env_url:
+        # Corrige erro comum de dialeto 'postgres://' -> 'postgresql://'
+        url = env_url.replace("postgres://", "postgresql://", 1)
+        
     return create_engine(url)
 
 def init_db():
