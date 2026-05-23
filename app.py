@@ -43,6 +43,12 @@ def format_dataframe(df):
     return df
 
 def main():
+    # Logo no topo da barra lateral
+    try:
+        st.sidebar.image("logo.svg", use_container_width=True)
+    except Exception:
+        pass
+
     st.title("Sistema de Planejamento de Transbordo - Comigo")
     
     menu = ["Dashboard", "Cenários de Simulação", "Carga de Dados", "Visualizar Dados", "Otimização"]
