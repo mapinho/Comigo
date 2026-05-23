@@ -1,4 +1,4 @@
-from models import Cenario, Fabrica, Armazem, Rota, PrevisaoFabrica, PrevisaoArmazem
+from models import Cenario, Fabrica, Armazem, Rota, PrevisaoFabrica, PrevisaoArmazem, SafraUnidade
 from sqlalchemy.orm import Session
 
 def clone_baseline_to_scenario(session: Session, scenario_name: str):
@@ -53,7 +53,8 @@ def clone_baseline_to_scenario(session: Session, scenario_name: str):
                 armazem_id=armazem_map[r.armazem_id],
                 fabrica_id=fabrica_map[r.fabrica_id],
                 distancia_km=r.distancia_km,
-                custo_frete_ton=r.custo_frete_ton
+                custo_frete_ton=r.custo_frete_ton,
+                custo_frete_entressafra=r.custo_frete_entressafra
             )
             session.add(new_r)
             
@@ -65,8 +66,7 @@ def clone_baseline_to_scenario(session: Session, scenario_name: str):
                 fabrica_id=new_id,
                 mes_referencia=p.mes_referencia,
                 recebimento_produtor=p.recebimento_produtor,
-                vendas=p.vendas,
-                eh_safra=p.eh_safra
+                vendas=p.vendas
             )
             session.add(new_p)
             
@@ -78,16 +78,39 @@ def clone_baseline_to_scenario(session: Session, scenario_name: str):
                 armazem_id=new_id,
                 mes_referencia=p.mes_referencia,
                 recebimento_produtor=p.recebimento_produtor,
-                vendas=p.vendas,
-                eh_safra=p.eh_safra
+                vendas=p.vendas
             )
             session.add(new_p)
+
+    # 7. Clonar Datas de Safra
+    # Fábricas
+    for old_id, new_id in fabrica_map.items():
+        s_unit = session.query(SafraUnidade).filter_by(cenario_id=None, entidade_tipo='Fábrica', entidade_id=old_id).first()
+        if s_unit:
+            session.add(SafraUnidade(
+                cenario_id=scenario_id,
+                entidade_tipo='Fábrica',
+                entidade_id=new_id,
+                data_inicio=s_unit.data_inicio,
+                data_fim=s_unit.data_fim
+            ))
+    # Armazéns
+    for old_id, new_id in armazem_map.items():
+        s_unit = session.query(SafraUnidade).filter_by(cenario_id=None, entidade_tipo='Armazém', entidade_id=old_id).first()
+        if s_unit:
+            session.add(SafraUnidade(
+                cenario_id=scenario_id,
+                entidade_tipo='Armazém',
+                entidade_id=new_id,
+                data_inicio=s_unit.data_inicio,
+                data_fim=s_unit.data_fim
+            ))
             
     session.commit()
     return scenario_id
 
 def delete_scenario(session: Session, scenario_id: int):
-    scenario = session.query(Cenario).get(scenario_id)
+    scenario = session.get(Cenario, scenario_id)
     if scenario:
         session.delete(scenario)
         session.commit()

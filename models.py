@@ -49,7 +49,8 @@ class Rota(Base):
     armazem_id = Column(Integer, ForeignKey('armazens.id', ondelete='CASCADE'), nullable=False)
     fabrica_id = Column(Integer, ForeignKey('fabricas.id', ondelete='CASCADE'), nullable=False)
     distancia_km = Column(Float, nullable=False)
-    custo_frete_ton = Column(Float, nullable=False)
+    custo_frete_ton = Column(Float, nullable=False) # Atuará como custo na safra
+    custo_frete_entressafra = Column(Float, nullable=False, default=0)
     
     armazem = relationship("Armazem", back_populates="rotas")
     fabrica = relationship("Fabrica", back_populates="rotas")
@@ -62,7 +63,6 @@ class PrevisaoFabrica(Base):
     mes_referencia = Column(Date, nullable=False) # Primeiro dia do mês
     recebimento_produtor = Column(Float, default=0)
     vendas = Column(Float, default=0)
-    eh_safra = Column(Integer, default=0) # 1 se for safra, 0 caso contrário
     
     fabrica = relationship("Fabrica", back_populates="previsoes")
 
@@ -74,9 +74,18 @@ class PrevisaoArmazem(Base):
     mes_referencia = Column(Date, nullable=False)
     recebimento_produtor = Column(Float, default=0)
     vendas = Column(Float, default=0)
-    eh_safra = Column(Integer, default=0)
     
     armazem = relationship("Armazem", back_populates="previsoes")
+
+class SafraUnidade(Base):
+    __tablename__ = 'safras_unidades'
+    
+    id = Column(Integer, primary_key=True)
+    cenario_id = Column(Integer, ForeignKey('cenarios.id', ondelete='CASCADE'), nullable=True)
+    entidade_tipo = Column(String(20), nullable=False) # 'Armazém' ou 'Fábrica'
+    entidade_id = Column(Integer, nullable=False) # ID do Armazém ou Fábrica
+    data_inicio = Column(Date, nullable=False)
+    data_fim = Column(Date, nullable=False)
 
 class MovimentacaoDiaria(Base):
     __tablename__ = 'movimentacoes_diarias'

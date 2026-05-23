@@ -2,7 +2,7 @@ import logging
 from ortools.linear_solver import pywraplp
 import pandas as pd
 import datetime
-from models import Fabrica, Armazem, Rota, MovimentacaoDiaria, PrevisaoFabrica, PrevisaoArmazem, ResumoMensalFabrica, ResumoMensalArmazem
+from models import Fabrica, Armazem, Rota, MovimentacaoDiaria, PrevisaoFabrica, PrevisaoArmazem, ResumoMensalFabrica, ResumoMensalArmazem, SafraUnidade
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,7 +10,19 @@ from sqlalchemy import func
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def otimizar_dia(session: Session, data, estoques_atuais, eh_safra_armazens, cenario_id=None):
+def esta_na_safra(session: Session, entidade_tipo, entidade_id, data, cenario_id):
+    """Verifica se uma data específica está dentro da janela de safra de uma unidade."""
+    safra = session.query(SafraUnidade).filter(
+        SafraUnidade.cenario_id == cenario_id,
+        SafraUnidade.entidade_tipo == entidade_tipo,
+        SafraUnidade.entidade_id == entidade_id
+    ).first()
+    
+    if safra:
+        return safra.data_inicio <= data <= safra.data_fim
+    return False
+
+def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico', cenario_id=None):
     """
     Otimiza a movimentação de soja para um dia específico.
     """
@@ -53,7 +65,7 @@ def otimizar_dia(session: Session, data, estoques_atuais, eh_safra_armazens, cen
         espaco_disponivel = max(0, f.capacidade_estatica - estoques_atuais.get(f'F_{f.id}', 0) + f.capacidade_esmagamento_diaria)
         solver.Add(recebimento_transbordo <= espaco_disponivel)
 
-    # Variáveis para atendimento de demanda
+    # Variáveis para atendimento de demanda (slack variables)
     v_atendimento = {}
     for f in fabricas:
         demanda = max(0, f.capacidade_esmagamento_diaria - max(0, estoques_atuais.get(f'F_{f.id}', 0)))
@@ -63,14 +75,33 @@ def otimizar_dia(session: Session, data, estoques_atuais, eh_safra_armazens, cen
             if movs_entrando:
                 solver.Add(solver.Sum(movs_entrando) >= v_atendimento[f.id])
 
+    # Pesos da Estratégia
+    # 'Econômico', 'Expedição', 'Segurança'
+    p_atendimento = 1000000
+    recompensa_base = 10000
+    if estrategia == 'Econômico':
+        recompensa_base = 500 # Recompensa menor para frete ser mais relevante
+    elif estrategia == 'Expedição':
+        recompensa_base = 20000 # Recompensa maior para forçar saída a qualquer custo
+    elif estrategia == 'Segurança':
+        p_atendimento = 5000000 # Prioridade extrema em não parar fábrica
+
     objetivo = solver.Objective()
     for f_id, var in v_atendimento.items():
-        objetivo.SetCoefficient(var, 1000000)
+        objetivo.SetCoefficient(var, p_atendimento)
     
     for r in rotas:
-        recompensa_base = 10000
-        incentivo_safra = 1000 if eh_safra_armazens.get(r.armazem_id) else 0
-        objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], recompensa_base + incentivo_safra - r.custo_frete_ton)
+        # Verifica se o armazém de origem está na safra
+        na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
+        
+        # Define o custo dinâmico
+        custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
+        
+        # Incentivo extra para movimentar na safra (Requisito 3.2)
+        incentivo_safra = 1000 if na_safra else 0
+        
+        # Coeficiente = Recompensa + Incentivo - Custo (Maximizar)
+        objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], recompensa_base + incentivo_safra - custo_ton)
     
     objetivo.SetMaximization()
     status = solver.Solve()
@@ -80,17 +111,19 @@ def otimizar_dia(session: Session, data, estoques_atuais, eh_safra_armazens, cen
         for r in rotas:
             qtd = v_mov[(r.armazem_id, r.fabrica_id)].solution_value()
             if qtd > 0.001:
+                na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
+                custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
                 resultados.append({
                     'armazem_id': r.armazem_id,
                     'fabrica_id': r.fabrica_id,
                     'quantidade_ton': qtd,
-                    'custo_total': qtd * r.custo_frete_ton
+                    'custo_total': qtd * custo_ton
                 })
         return resultados
     return None
 
-def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id=None):
-    # Limpar resultados existentes para este cenário no período estendido (estimado 1 ano extra)
+def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id=None, estrategia='Econômico'):
+    # Limpar resultados existentes
     session.query(MovimentacaoDiaria).filter(
         MovimentacaoDiaria.data >= data_inicio,
         MovimentacaoDiaria.cenario_id == cenario_id
@@ -108,14 +141,13 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
     for a in armazens: estoques_atuais[f'A_{a.id}'] = a.estoque_inicial
 
     data_atual = pd.to_datetime(data_inicio).date()
-    # d_fim_p pode ser Timestamp, normalizar para date
     d_fim_p = pd.to_datetime(data_fim_previsao).date()
     
     resumos_fab = {}
     resumos_arm = {}
 
     dias_executados = 0
-    max_dias = 730 # Limite de segurança de 2 anos
+    max_dias = 730
 
     while True:
         mes_str = data_atual.strftime('%Y-%m')
@@ -128,10 +160,7 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
         mes_atual_date = datetime.date(data_atual.year, data_atual.month, 1)
         dias_no_mes = pd.Period(data_atual.strftime('%Y-%m-%d')).days_in_month
 
-        eh_safra_armazens = {}
-        
-        # 1. Processar Previsões (apenas se estiver dentro do range de previsões)
-        # Se data_atual > d_fim_p, rec_diario e vend_diario serão 0 (valor padrão)
+        # 1. Processar Previsões
         for f in fabricas:
             prev = session.query(PrevisaoFabrica).filter_by(fabrica_id=f.id, mes_referencia=mes_atual_date).first()
             if prev:
@@ -148,12 +177,9 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
                 estoques_atuais[f'A_{a.id}'] += (rec_diario - vend_diario)
                 resumos_arm[mes_str][a.id]['rec_produtor'] += rec_diario
                 resumos_arm[mes_str][a.id]['vendas'] += vend_diario
-                eh_safra_armazens[a.id] = (prev.eh_safra == 1)
-            else:
-                eh_safra_armazens[a.id] = False
         
         # 2. Otimizar transbordo
-        movimentacoes = otimizar_dia(session, data_atual, estoques_atuais, eh_safra_armazens, cenario_id=cenario_id)
+        movimentacoes = otimizar_dia(session, data_atual, estoques_atuais, estrategia=estrategia, cenario_id=cenario_id)
         
         if movimentacoes:
             for mov in movimentacoes:
@@ -177,7 +203,6 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
             resumos_fab[mes_str][f.id]['esmagado'] += esmagado_real
             
         # 4. Verificar Condição de Parada e Salvar Resumos
-        # Condição: Passou da data das previsões E todos os armazéns estão zerados
         total_estoque_arm = sum(max(0, estoques_atuais[f'A_{a.id}']) for a in armazens)
         acabaram_previsoes = data_atual >= d_fim_p
         armazens_vazios = total_estoque_arm < 0.1
@@ -199,7 +224,6 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
         data_atual += datetime.timedelta(days=1)
         dias_executados += 1
 
-    # Salvar resumos no banco
     for mes, fab_dict in resumos_fab.items():
         for f_id, dados in fab_dict.items():
             session.add(ResumoMensalFabrica(
@@ -220,10 +244,7 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
 
     session.commit()
 
-
-
 def obter_range_previsoes(session: Session, cenario_id=None):
-    # Precisamos filtrar as previsões que pertencem a fábricas/armazéns do cenário X
     min_f = session.query(func.min(PrevisaoFabrica.mes_referencia)).join(Fabrica).filter(Fabrica.cenario_id == cenario_id).scalar()
     max_f = session.query(func.max(PrevisaoFabrica.mes_referencia)).join(Fabrica).filter(Fabrica.cenario_id == cenario_id).scalar()
     min_a = session.query(func.min(PrevisaoArmazem.mes_referencia)).join(Armazem).filter(Armazem.cenario_id == cenario_id).scalar()
