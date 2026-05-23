@@ -96,19 +96,35 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
         objetivo.SetCoefficient(var, p_atendimento)
     
     for r in rotas:
-        # Verifica se o armazém de origem está na safra
-        na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
+        # Recupera as datas de safra para esta unidade
+        safra = session.query(SafraUnidade).filter(
+            SafraUnidade.cenario_id == cenario_id,
+            SafraUnidade.entidade_tipo == 'Armazém',
+            SafraUnidade.entidade_id == r.armazem_id
+        ).first()
         
-        # REQUISITO: O transbordo só deve existir a partir da data de safra.
-        if not na_safra:
+        if safra:
+            d_ini, d_fim = safra.data_inicio, safra.data_fim
+        else:
+            # Padrão se não configurado
+            d_ini = datetime.date(data.year, 1, 15)
+            d_fim = datetime.date(data.year, 4, 15)
+
+        # REQUISITO: Bloqueio rigoroso APENAS ANTES da safra começar.
+        if data < d_ini:
             solver.Add(v_mov[(r.armazem_id, r.fabrica_id)] == 0)
             continue 
 
-        # Define o custo dinâmico
-        custo_ton = r.custo_frete_ton
+        # Se chegou aqui, a safra já começou ou já passou.
+        # na_safra define o custo (Safra vs Entressafra) e o incentivo extra.
+        na_safra = (d_ini <= data <= d_fim)
         
-        # Incentivo para movimentar na safra
-        incentivo_movimentar = recompensa_base + 1000
+        # Define o custo dinâmico
+        custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
+        
+        # Incentivo: recompensa_base sempre existe após o início da safra para limpar o armazém.
+        # Adicionamos um bônus extra (+1000) se estiver no pico da safra.
+        incentivo_movimentar = recompensa_base + (1000 if na_safra else 0)
         
         # Coeficiente = Incentivo - Custo (Maximizar)
         objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], incentivo_movimentar - custo_ton)
@@ -131,13 +147,14 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
     return None
 
 def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id=None, estrategia='Econômico'):
-    # Limpar resultados existentes de forma explícita para NULL ou ID
+    # REQUISITO: Limpar TODOS os resultados existentes deste cenário para garantir um reinício do zero.
+    # Removemos o filtro de data (data >= data_inicio) para não deixar rastro de execuções anteriores com datas diferentes.
     if cenario_id is None:
-        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.data >= data_inicio, MovimentacaoDiaria.cenario_id.is_(None)).delete()
+        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id.is_(None)).delete()
         session.query(ResumoMensalFabrica).filter(ResumoMensalFabrica.cenario_id.is_(None)).delete()
         session.query(ResumoMensalArmazem).filter(ResumoMensalArmazem.cenario_id.is_(None)).delete()
     else:
-        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.data >= data_inicio, MovimentacaoDiaria.cenario_id == cenario_id).delete()
+        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id == cenario_id).delete()
         session.query(ResumoMensalFabrica).filter_by(cenario_id=cenario_id).delete()
         session.query(ResumoMensalArmazem).filter_by(cenario_id=cenario_id).delete()
     session.commit()
