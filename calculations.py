@@ -20,7 +20,13 @@ def esta_na_safra(session: Session, entidade_tipo, entidade_id, data, cenario_id
     
     if safra:
         return safra.data_inicio <= data <= safra.data_fim
-    return False
+    
+    # Fallback: Se não houver configuração de safra, usamos um período padrão (15/01 a 15/04)
+    # Isso evita que o sistema trave se o usuário não cadastrou as datas.
+    ano = data.year
+    default_ini = datetime.date(ano, 1, 15)
+    default_fim = datetime.date(ano, 4, 15)
+    return default_ini <= data <= default_fim
 
 def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico', cenario_id=None):
     """
@@ -76,15 +82,14 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
                 solver.Add(solver.Sum(movs_entrando) >= v_atendimento[f.id])
 
     # Pesos da Estratégia
-    # 'Econômico', 'Expedição', 'Segurança'
     p_atendimento = 1000000
     recompensa_base = 10000
     if estrategia == 'Econômico':
-        recompensa_base = 500 # Recompensa menor para frete ser mais relevante
+        recompensa_base = 500 
     elif estrategia == 'Expedição':
-        recompensa_base = 20000 # Recompensa maior para forçar saída a qualquer custo
+        recompensa_base = 20000 
     elif estrategia == 'Segurança':
-        p_atendimento = 5000000 # Prioridade extrema em não parar fábrica
+        p_atendimento = 5000000 
 
     objetivo = solver.Objective()
     for f_id, var in v_atendimento.items():
@@ -95,12 +100,11 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
         na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
         
         # REQUISITO: O transbordo só deve existir a partir da data de safra.
-        # Se não estiver na safra, bloqueamos o movimento (volume = 0)
         if not na_safra:
             solver.Add(v_mov[(r.armazem_id, r.fabrica_id)] == 0)
-            continue # Pula para a próxima rota
+            continue 
 
-        # Define o custo dinâmico (aqui já sabemos que na_safra é True)
+        # Define o custo dinâmico
         custo_ton = r.custo_frete_ton
         
         # Incentivo para movimentar na safra
@@ -117,25 +121,25 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
         for r in rotas:
             qtd = v_mov[(r.armazem_id, r.fabrica_id)].solution_value()
             if qtd > 0.001:
-                na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
-                custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
                 resultados.append({
                     'armazem_id': r.armazem_id,
                     'fabrica_id': r.fabrica_id,
                     'quantidade_ton': qtd,
-                    'custo_total': qtd * custo_ton
+                    'custo_total': qtd * r.custo_frete_ton
                 })
         return resultados
     return None
 
 def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id=None, estrategia='Econômico'):
-    # Limpar resultados existentes
-    session.query(MovimentacaoDiaria).filter(
-        MovimentacaoDiaria.data >= data_inicio,
-        MovimentacaoDiaria.cenario_id == cenario_id
-    ).delete()
-    session.query(ResumoMensalFabrica).filter_by(cenario_id=cenario_id).delete()
-    session.query(ResumoMensalArmazem).filter_by(cenario_id=cenario_id).delete()
+    # Limpar resultados existentes de forma explícita para NULL ou ID
+    if cenario_id is None:
+        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.data >= data_inicio, MovimentacaoDiaria.cenario_id.is_(None)).delete()
+        session.query(ResumoMensalFabrica).filter(ResumoMensalFabrica.cenario_id.is_(None)).delete()
+        session.query(ResumoMensalArmazem).filter(ResumoMensalArmazem.cenario_id.is_(None)).delete()
+    else:
+        session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.data >= data_inicio, MovimentacaoDiaria.cenario_id == cenario_id).delete()
+        session.query(ResumoMensalFabrica).filter_by(cenario_id=cenario_id).delete()
+        session.query(ResumoMensalArmazem).filter_by(cenario_id=cenario_id).delete()
     session.commit()
 
     # Carregar estoques iniciais
