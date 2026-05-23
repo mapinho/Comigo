@@ -97,11 +97,14 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
         # Define o custo dinâmico
         custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
         
-        # Incentivo extra para movimentar na safra (Requisito 3.2)
-        incentivo_safra = 1000 if na_safra else 0
+        # A recompensa base (incentivo para esvaziar armazém) 
+        # só deve existir se estiver na safra. Fora da safra, a recompensa é 0,
+        # fazendo com que o custo do frete atue como penalidade real, 
+        # forçando o movimento apenas se a fábrica realmente precisar.
+        incentivo_movimentar = (recompensa_base + (1000 if na_safra else 0)) if na_safra else 0
         
-        # Coeficiente = Recompensa + Incentivo - Custo (Maximizar)
-        objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], recompensa_base + incentivo_safra - custo_ton)
+        # Coeficiente = Incentivo - Custo (Maximizar)
+        objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], incentivo_movimentar - custo_ton)
     
     objetivo.SetMaximization()
     status = solver.Solve()
