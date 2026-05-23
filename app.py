@@ -380,118 +380,175 @@ def main():
         tabela = st.selectbox("Selecione a Tabela", ["Fábricas", "Armazéns", "Rotas", "Previsões Fábrica", "Previsões Armazém", "Movimentações Diárias"])
         
         if tabela == "Fábricas":
-            dados = session.query(Fabrica).filter_by(cenario_id=None).all()
+            dados = session.query(Fabrica).filter(Fabrica.cenario_id == None).all()
             if dados:
-                df = pd.DataFrame([vars(d) for d in dados]).drop(['_sa_instance_state', 'cenario_id'], axis=1)
-                edited_df = st.data_editor(format_dataframe(df), hide_index=True, key="edit_fabs_baseline")
+                df = pd.DataFrame([{
+                    'id': d.id,
+                    'nome': d.nome,
+                    'capacidade_estatica': d.capacidade_estatica,
+                    'capacidade_esmagamento_diaria': d.capacidade_esmagamento_diaria,
+                    'capacidade_recebimento_diaria': d.capacidade_recebimento_diaria,
+                    'limite_caminhoes': d.limite_caminhoes,
+                    'carga_media_caminhao': d.carga_media_caminhao,
+                    'estoque_inicial': d.estoque_inicial
+                } for d in dados])
+                
+                edited_df = st.data_editor(
+                    df, 
+                    hide_index=True, 
+                    key="edit_fabs_baseline",
+                    disabled=["id", "nome"],
+                    column_config={"id": st.column_config.NumberColumn(disabled=True)}
+                )
+                
                 if st.button("Salvar Alterações Fábricas"):
                     for _, row in edited_df.iterrows():
-                        obj = session.query(Fabrica).get(row['id'])
-                        obj.nome = row['nome']
-                        obj.capacidade_estatica = row['capacidade_estatica']
-                        obj.capacidade_esmagamento_diaria = row['capacidade_esmagamento_diaria']
-                        obj.capacidade_recebimento_diaria = row['capacidade_recebimento_diaria']
-                        obj.limite_caminhoes = row['limite_caminhoes']
-                        obj.carga_media_caminhao = row['carga_media_caminhao']
+                        obj = session.get(Fabrica, row['id'])
+                        if obj:
+                            obj.capacidade_estatica = row['capacidade_estatica']
+                            obj.capacidade_esmagamento_diaria = row['capacidade_esmagamento_diaria']
+                            obj.capacidade_recebimento_diaria = row['capacidade_recebimento_diaria']
+                            obj.limite_caminhoes = row['limite_caminhoes']
+                            obj.carga_media_caminhao = row['carga_media_caminhao']
+                            obj.estoque_inicial = row['estoque_inicial']
                     session.commit()
                     st.success("Fábricas atualizadas.")
                 st.download_button(label="Exportar para Excel", data=export_to_excel(df, "fabricas"), file_name="fabricas.xlsx")
-            else: st.warning("Tabela vazia.")
+            else: st.warning("Tabela de Fábricas está vazia.")
                 
         elif tabela == "Armazéns":
-            dados = session.query(Armazem).filter_by(cenario_id=None).all()
+            dados = session.query(Armazem).filter(Armazem.cenario_id == None).all()
             if dados:
-                df = pd.DataFrame([vars(d) for d in dados]).drop(['_sa_instance_state', 'cenario_id'], axis=1)
-                edited_df = st.data_editor(format_dataframe(df), hide_index=True, key="edit_arms_baseline")
+                df = pd.DataFrame([{
+                    'id': d.id,
+                    'nome': d.nome,
+                    'capacidade_estatica': d.capacidade_estatica,
+                    'capacidade_expedicao_diaria': d.capacidade_expedicao_diaria,
+                    'estoque_inicial': d.estoque_inicial
+                } for d in dados])
+                
+                edited_df = st.data_editor(
+                    df, 
+                    hide_index=True, 
+                    key="edit_arms_baseline",
+                    disabled=["id", "nome"]
+                )
+                
                 if st.button("Salvar Alterações Armazéns"):
                     for _, row in edited_df.iterrows():
-                        obj = session.query(Armazem).get(row['id'])
-                        obj.nome = row['nome']
-                        obj.capacidade_estatica = row['capacidade_estatica']
-                        obj.capacidade_expedicao_diaria = row['capacidade_expedicao_diaria']
+                        obj = session.get(Armazem, row['id'])
+                        if obj:
+                            obj.capacidade_estatica = row['capacidade_estatica']
+                            obj.capacidade_expedicao_diaria = row['capacidade_expedicao_diaria']
+                            obj.estoque_inicial = row['estoque_inicial']
                     session.commit()
                     st.success("Armazéns atualizados.")
                 st.download_button(label="Exportar para Excel", data=export_to_excel(df, "armazens"), file_name="armazens.xlsx")
-            else: st.warning("Tabela vazia.")
+            else: st.warning("Tabela de Armazéns está vazia.")
                 
         elif tabela == "Rotas":
-            dados = session.query(Rota).filter_by(cenario_id=None).all()
+            dados = session.query(Rota).filter(Rota.cenario_id == None).all()
             if dados:
                 data_rots = []
                 for d in dados:
+                    arm = session.get(Armazem, d.armazem_id)
+                    fab = session.get(Fabrica, d.fabrica_id)
                     data_rots.append({
                         'id': d.id,
-                        'Origem': session.query(Armazem).get(d.armazem_id).nome,
-                        'Destino': session.query(Fabrica).get(d.fabrica_id).nome,
+                        'Origem': arm.nome if arm else "N/A",
+                        'Destino': fab.nome if fab else "N/A",
                         'Distância (km)': d.distancia_km,
                         'Custo Frete (Ton)': d.custo_frete_ton
                     })
                 df = pd.DataFrame(data_rots)
-                edited_df = st.data_editor(format_dataframe(df), hide_index=True, key="edit_rots_baseline")
+                edited_df = st.data_editor(
+                    df, 
+                    hide_index=True, 
+                    key="edit_rots_baseline",
+                    disabled=["id", "Origem", "Destino"]
+                )
+                
                 if st.button("Salvar Alterações Rotas"):
                     for _, row in edited_df.iterrows():
-                        obj = session.query(Rota).get(row['id'])
-                        obj.distancia_km = row['Distância (km)']
-                        obj.custo_frete_ton = row['Custo Frete (Ton)']
+                        obj = session.get(Rota, row['id'])
+                        if obj:
+                            obj.distancia_km = row['Distância (km)']
+                            obj.custo_frete_ton = row['Custo Frete (Ton)']
                     session.commit()
                     st.success("Rotas atualizadas.")
                 st.download_button(label="Exportar para Excel", data=export_to_excel(df, "rotas"), file_name="rotas.xlsx")
-            else: st.warning("Tabela vazia.")
+            else: st.warning("Tabela de Rotas está vazia.")
                 
         elif tabela == "Previsões Fábrica":
             dados = session.query(PrevisaoFabrica).join(Fabrica).filter(Fabrica.cenario_id == None).all()
             if dados:
                 df = pd.DataFrame([{
                     'id': d.id,
-                    'Fábrica': session.query(Fabrica).get(d.fabrica_id).nome,
+                    'Fábrica': session.get(Fabrica, d.fabrica_id).nome,
                     'Mês': d.mes_referencia,
                     'Recebimento Produtor': d.recebimento_produtor,
                     'Vendas': d.vendas
                 } for d in dados])
-                edited_df = st.data_editor(format_dataframe(df), hide_index=True, key="edit_pfab_baseline")
+                edited_df = st.data_editor(
+                    df, 
+                    hide_index=True, 
+                    key="edit_pfab_baseline",
+                    disabled=["id", "Fábrica", "Mês"]
+                )
+                
                 if st.button("Salvar Previsões Fábrica"):
                     for _, row in edited_df.iterrows():
-                        obj = session.query(PrevisaoFabrica).get(row['id'])
-                        obj.recebimento_produtor = row['Recebimento Produtor']
-                        obj.vendas = row['Vendas']
+                        obj = session.get(PrevisaoFabrica, row['id'])
+                        if obj:
+                            obj.recebimento_produtor = row['Recebimento Produtor']
+                            obj.vendas = row['Vendas']
                     session.commit()
-                    st.success("Previsões salvas.")
-            else: st.warning("Tabela vazia.")
+                    st.success("Previsões de Fábrica salvas.")
+                st.download_button(label="Exportar Excel", data=export_to_excel(df, "prev_fab"), file_name="prev_fab.xlsx")
+            else: st.warning("Tabela de Previsões de Fábrica está vazia.")
 
         elif tabela == "Previsões Armazém":
             dados = session.query(PrevisaoArmazem).join(Armazem).filter(Armazem.cenario_id == None).all()
             if dados:
                 df = pd.DataFrame([{
                     'id': d.id,
-                    'Armazém': session.query(Armazem).get(d.armazem_id).nome,
+                    'Armazém': session.get(Armazem, d.armazem_id).nome,
                     'Mês': d.mes_referencia,
                     'Recebimento Produtor': d.recebimento_produtor,
                     'Vendas': d.vendas
                 } for d in dados])
-                edited_df = st.data_editor(format_dataframe(df), hide_index=True, key="edit_parm_baseline")
+                edited_df = st.data_editor(
+                    df, 
+                    hide_index=True, 
+                    key="edit_parm_baseline",
+                    disabled=["id", "Armazém", "Mês"]
+                )
+                
                 if st.button("Salvar Previsões Armazém"):
                     for _, row in edited_df.iterrows():
-                        obj = session.query(PrevisaoArmazem).get(row['id'])
-                        obj.recebimento_produtor = row['Recebimento Produtor']
-                        obj.vendas = row['Vendas']
+                        obj = session.get(PrevisaoArmazem, row['id'])
+                        if obj:
+                            obj.recebimento_produtor = row['Recebimento Produtor']
+                            obj.vendas = row['Vendas']
                     session.commit()
-                    st.success("Previsões salvas.")
-            else: st.warning("Tabela vazia.")
+                    st.success("Previsões de Armazém salvas.")
+                st.download_button(label="Exportar Excel", data=export_to_excel(df, "prev_arm"), file_name="prev_arm.xlsx")
+            else: st.warning("Tabela de Previsões de Armazém está vazia.")
 
         elif tabela == "Movimentações Diárias":
-            dados = session.query(MovimentacaoDiaria).filter_by(cenario_id=None).all()
+            dados = session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id == None).all()
             if dados:
                 df = pd.DataFrame([{
                     'Data': d.data,
-                    'Origem': session.query(Armazem).get(d.armazem_id).nome,
-                    'Destino': session.query(Fabrica).get(d.fabrica_id).nome,
+                    'Origem': session.get(Armazem, d.armazem_id).nome,
+                    'Destino': session.get(Fabrica, d.fabrica_id).nome,
                     'Quantidade (Ton)': d.quantidade_ton,
                     'Quantidade (Sc)': d.quantidade_ton * 1000 / 60,
                     'Custo Total': d.custo_total
                 } for d in dados])
                 st.dataframe(format_dataframe(df), hide_index=True)
                 st.download_button(label="Exportar para Excel", data=export_to_excel(df, "movimentacoes"), file_name="movimentacoes.xlsx")
-            else: st.warning("Tabela vazia.")
+            else: st.warning("Não há movimentações oficiais calculadas.")
 
     elif choice == "Otimização":
         st.subheader("Executar Otimização de Transbordo (Planejado)")
