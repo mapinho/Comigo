@@ -94,14 +94,17 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
         # Verifica se o armazém de origem está na safra
         na_safra = esta_na_safra(session, 'Armazém', r.armazem_id, data, cenario_id)
         
-        # Define o custo dinâmico
-        custo_ton = r.custo_frete_ton if na_safra else r.custo_frete_entressafra
+        # REQUISITO: O transbordo só deve existir a partir da data de safra.
+        # Se não estiver na safra, bloqueamos o movimento (volume = 0)
+        if not na_safra:
+            solver.Add(v_mov[(r.armazem_id, r.fabrica_id)] == 0)
+            continue # Pula para a próxima rota
+
+        # Define o custo dinâmico (aqui já sabemos que na_safra é True)
+        custo_ton = r.custo_frete_ton
         
-        # A recompensa base (incentivo para esvaziar armazém) 
-        # só deve existir se estiver na safra. Fora da safra, a recompensa é 0,
-        # fazendo com que o custo do frete atue como penalidade real, 
-        # forçando o movimento apenas se a fábrica realmente precisar.
-        incentivo_movimentar = (recompensa_base + (1000 if na_safra else 0)) if na_safra else 0
+        # Incentivo para movimentar na safra
+        incentivo_movimentar = recompensa_base + 1000
         
         # Coeficiente = Incentivo - Custo (Maximizar)
         objetivo.SetCoefficient(v_mov[(r.armazem_id, r.fabrica_id)], incentivo_movimentar - custo_ton)
