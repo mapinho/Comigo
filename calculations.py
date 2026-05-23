@@ -147,8 +147,11 @@ def otimizar_dia(session: Session, data, estoques_atuais, estrategia='Econômico
     return None
 
 def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id=None, estrategia='Econômico'):
-    # REQUISITO: Limpar TODOS os resultados existentes deste cenário para garantir um reinício do zero.
-    # Removemos o filtro de data (data >= data_inicio) para não deixar rastro de execuções anteriores com datas diferentes.
+    # REQUISITO: Ajustar data_inicio para o dia 1 do mês para capturar TODO o volume de recebimento do mês inicial.
+    # Mesmo que o transbordo só abra no dia 15, o grão recebido do dia 1 ao 14 deve estar no estoque.
+    data_inicio_ajustada = pd.to_datetime(data_inicio).date().replace(day=1)
+    
+    # REQUISITO: Limpar TODOS os resultados existentes deste cenário.
     if cenario_id is None:
         session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id.is_(None)).delete()
         session.query(ResumoMensalFabrica).filter(ResumoMensalFabrica.cenario_id.is_(None)).delete()
@@ -167,14 +170,14 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
     for f in fabricas: estoques_atuais[f'F_{f.id}'] = f.estoque_inicial
     for a in armazens: estoques_atuais[f'A_{a.id}'] = a.estoque_inicial
 
-    data_atual = pd.to_datetime(data_inicio).date()
+    data_atual = data_inicio_ajustada
     d_fim_p = pd.to_datetime(data_fim_previsao).date()
     
     resumos_fab = {}
     resumos_arm = {}
 
     dias_executados = 0
-    max_dias = 730
+    max_dias = 500 # Reduzido para evitar loops infinitos muito longos
 
     while True:
         mes_str = data_atual.strftime('%Y-%m')
@@ -232,7 +235,7 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
         # 4. Verificar Condição de Parada e Salvar Resumos
         total_estoque_arm = sum(max(0, estoques_atuais[f'A_{a.id}']) for a in armazens)
         acabaram_previsoes = data_atual >= d_fim_p
-        armazens_vazios = total_estoque_arm < 0.1
+        armazens_vazios = total_estoque_arm < 1.0 # Limiar de 1 Ton para evitar resíduos infinitos
         
         eh_ultimo_dia_simulacao = (acabaram_previsoes and armazens_vazios) or dias_executados >= max_dias
         eh_ultimo_dia_mes = (data_atual + datetime.timedelta(days=1)).month != data_atual.month
