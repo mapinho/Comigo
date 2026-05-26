@@ -245,7 +245,25 @@ def main():
                     st.success("Salvo.")
 
             with tab_safra:
-                st.session_state.df_safras_edit = st.data_editor(st.session_state.df_safras_edit, key="esaf", hide_index=True, column_config=get_model_column_config(SafraUnidade))
+                df = st.session_state.df_safras_edit
+                # Resolve os nomes das unidades para exibição
+                unidades = []
+                for _, row in df.iterrows():
+                    s_obj = session.get(SafraUnidade, int(row['id']))
+                    if s_obj.entidade_tipo == 'Armazém':
+                        name = session.get(Armazem, s_obj.entidade_id).nome
+                    else:
+                        name = session.get(Fabrica, s_obj.entidade_id).nome
+                    unidades.append(name)
+                df['Unidade'] = unidades
+
+                st.session_state.df_safras_edit = st.data_editor(
+                    df, 
+                    key="esaf", 
+                    hide_index=True, 
+                    disabled=["id", "Tipo", "Unidade"],
+                    column_config=get_model_column_config(SafraUnidade)
+                )
                 if st.button("Salvar Datas"):
                     for _, row in st.session_state.df_safras_edit.iterrows():
                         s = session.get(SafraUnidade, int(row['id']))
@@ -278,7 +296,20 @@ def main():
             dados = session.query(PrevisaoArmazem).join(Armazem).filter(Armazem.cenario_id == None).all()
             
         df = build_df_from_model(dados, curr_model)
-        edited_df = st.data_editor(df, hide_index=True, key=f"vis_{tabela}", column_config=get_model_column_config(curr_model))
+
+        # Resolve nomes para Datas de Safra no Oficial
+        if tabela == "Datas de Safra":
+            unidades = []
+            for _, row in df.iterrows():
+                s_obj = session.get(SafraUnidade, int(row['id']))
+                if s_obj.entidade_tipo == 'Armazém':
+                    name = session.get(Armazem, s_obj.entidade_id).nome
+                else:
+                    name = session.get(Fabrica, s_obj.entidade_id).nome
+                unidades.append(name)
+            df['Unidade'] = unidades
+
+        edited_df = st.data_editor(df, hide_index=True, key=f"vis_{tabela}", disabled=["id", "Fábrica", "Armazém", "Mês", "Tipo", "Unidade"], column_config=get_model_column_config(curr_model))
         
         if st.button(f"Salvar {tabela}"):
             for _, row in edited_df.iterrows():
