@@ -14,7 +14,7 @@ def format_volume(x):
     try:
         val = float(x)
         # Formato brasileiro: Milhares com . e 2 decimais com ,
-        return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return x
 
@@ -49,7 +49,7 @@ def get_model_column_config(model_class):
             if col_type == 'number':
                 config[label] = st.column_config.NumberColumn(
                     label=label,
-                    format=info.get('format', '%.2f'),
+                    format=info.get('format', '%,.2f'),
                     step=info.get('step', 0.01),
                     disabled=disabled
                 )

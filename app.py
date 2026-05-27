@@ -6,7 +6,7 @@ from calculations import simular_periodo, obter_range_previsoes
 from models import Fabrica, Armazem, Rota, PrevisaoFabrica, PrevisaoArmazem, MovimentacaoDiaria, ResumoMensalFabrica, ResumoMensalArmazem, Cenario, SafraUnidade
 import scenarios
 import datetime
-from sqlalchemy import func
+from sqlalchemy import func, inspect
 from utils import export_to_excel, format_dataframe, format_volume, format_valor, get_model_column_config, build_df_from_model
 
 st.set_page_config(page_title="Comigo - Transbordo de Soja", layout="wide")
@@ -34,10 +34,18 @@ def main():
             
         selected_cenario_id = st.sidebar.selectbox("Selecionar Cenário", options=list(cenario_options.keys()), format_func=lambda x: cenario_options[x])
 
+        # Lógica inteligente para definir o range de datas padrão do Dashboard
+        # REQUISITO: Forçar atualização sempre que o cenário mudar
         if 'dash_sid' not in st.session_state or st.session_state.dash_sid != selected_cenario_id:
             st.session_state.dash_sid = selected_cenario_id
-            min_d = session.query(func.min(MovimentacaoDiaria.data)).filter(MovimentacaoDiaria.cenario_id == selected_cenario_id).scalar()
-            max_d = session.query(func.max(MovimentacaoDiaria.data)).filter(MovimentacaoDiaria.cenario_id == selected_cenario_id).scalar()
+            
+            # Busca as datas reais das movimentações no banco
+            min_d = session.query(func.min(MovimentacaoDiaria.data)).filter(
+                MovimentacaoDiaria.cenario_id == selected_cenario_id if selected_cenario_id else MovimentacaoDiaria.cenario_id.is_(None)
+            ).scalar()
+            max_d = session.query(func.max(MovimentacaoDiaria.data)).filter(
+                MovimentacaoDiaria.cenario_id == selected_cenario_id if selected_cenario_id else MovimentacaoDiaria.cenario_id.is_(None)
+            ).scalar()
             
             if min_d and max_d:
                 st.session_state.dash_data_ini = min_d
@@ -56,6 +64,8 @@ def main():
             st.write("")
             if st.button("Resetar Filtros", use_container_width=True):
                 if 'dash_sid' in st.session_state: del st.session_state.dash_sid
+                if 'dash_data_ini' in st.session_state: del st.session_state.dash_data_ini
+                if 'dash_data_fim' in st.session_state: del st.session_state.dash_data_fim
                 st.rerun()
 
         st.session_state.dash_data_ini = data_ini
@@ -64,14 +74,14 @@ def main():
         try:
             movs = session.query(MovimentacaoDiaria).filter(
                 MovimentacaoDiaria.data.between(data_ini, data_fim),
-                MovimentacaoDiaria.cenario_id == selected_cenario_id
+                MovimentacaoDiaria.cenario_id == selected_cenario_id if selected_cenario_id else MovimentacaoDiaria.cenario_id.is_(None)
             ).all()
             
             if movs:
                 df_movs = pd.DataFrame([{
                     'Data': m.data,
-                    'Origem': session.get(Armazem, m.armazem_id).nome,
-                    'Destino': session.get(Fabrica, m.fabrica_id).nome,
+                    'Origem': session.get(Armazem, m.armazem_id).nome if session.get(Armazem, m.armazem_id) else "N/A",
+                    'Destino': session.get(Fabrica, m.fabrica_id).nome if session.get(Fabrica, m.fabrica_id) else "N/A",
                     'Quantidade (Ton)': m.quantidade_ton,
                     'Quantidade (Sc)': m.quantidade_ton * 1000 / 60,
                     'Custo Total (R$)': m.custo_total
@@ -104,7 +114,7 @@ def main():
                     if selected_cenario_id is not None:
                         base_movs = session.query(MovimentacaoDiaria).filter(
                             MovimentacaoDiaria.data.between(data_ini, data_fim),
-                            MovimentacaoDiaria.cenario_id == None
+                            MovimentacaoDiaria.cenario_id.is_(None)
                         ).all()
                         if base_movs:
                             baseline_cost = sum(m.custo_total for m in base_movs)
@@ -121,9 +131,9 @@ def main():
                     
                     with col_m2:
                         st.write("**Indicadores Tonelada**")
-                        delta_vol = f"{((total_vol/baseline_vol)-1)*100:.1f}% vs Planejado" if baseline_vol else None
+                        delta_vol = f"{((total_vol/baseline_vol)-1)*100:.1f}% vs Planejado" if (baseline_vol and baseline_vol > 0) else None
                         st.metric("Total Movimentado (Ton)", format_volume(total_vol), delta=delta_vol)
-                        delta_cost = f"{((total_cost/baseline_cost)-1)*100:.1f}% vs Planejado" if baseline_cost else None
+                        delta_cost = f"{((total_cost/baseline_cost)-1)*100:.1f}% vs Planejado" if (baseline_cost and baseline_cost > 0) else None
                         st.metric("Custo Total (R$)", format_valor(total_cost), delta=delta_cost, delta_color="inverse")
                     
                     with col_m3:
@@ -135,27 +145,37 @@ def main():
                     st.download_button(label="Exportar Detalhamento Mensal para Excel", data=export_to_excel(df_mes_rotas, "detalhamento_mensal"), file_name="detalhamento_mensal.xlsx")
                     
                 elif visao == "Resumo Fábricas":
-                    resumos_fab = session.query(ResumoMensalFabrica).filter_by(cenario_id=selected_cenario_id).all()
+                    resumos_fab = session.query(ResumoMensalFabrica).filter(
+                        ResumoMensalFabrica.cenario_id == selected_cenario_id if selected_cenario_id else ResumoMensalFabrica.cenario_id.is_(None)
+                    ).all()
                     if resumos_fab:
                         df_rf = build_df_from_model(resumos_fab, ResumoMensalFabrica)
-                        # Adiciona nomes humanos (build_df_from_model pegou IDs e campos técnicos)
-                        df_rf['Fábrica'] = [session.get(Fabrica, r.fabrica_id).nome for r in resumos_fab]
+                        df_rf['Fábrica'] = [session.get(Fabrica, r.fabrica_id).nome if session.get(Fabrica, r.fabrica_id) else "N/A" for r in resumos_fab]
                         df_rf['Mês'] = [r.mes for r in resumos_fab]
+                        # Reordenar e limpar colunas
+                        cols_rf = ['Mês', 'Fábrica'] + [c for c in df_rf.columns if c not in ['Mês', 'Fábrica', 'id', 'cenario_id', 'fabrica_id']]
+                        df_rf = df_rf[cols_rf]
                         st.dataframe(format_dataframe(df_rf), hide_index=True)
                         st.download_button(label="Exportar Resumo Fábricas para Excel", data=export_to_excel(df_rf, "resumo_fabricas"), file_name="resumo_fabricas.xlsx")
-                
+
                 elif visao == "Resumo Armazéns":
-                    resumos_arm = session.query(ResumoMensalArmazem).filter_by(cenario_id=selected_cenario_id).all()
+                    resumos_arm = session.query(ResumoMensalArmazem).filter(
+                        ResumoMensalArmazem.cenario_id == selected_cenario_id if selected_cenario_id else ResumoMensalArmazem.cenario_id.is_(None)
+                    ).all()
                     if resumos_arm:
                         df_ra = build_df_from_model(resumos_arm, ResumoMensalArmazem)
-                        df_ra['Armazém'] = [session.get(Armazem, r.armazem_id).nome for r in resumos_arm]
+                        df_ra['Armazém'] = [session.get(Armazem, r.armazem_id).nome if session.get(Armazem, r.armazem_id) else "N/A" for r in resumos_arm]
                         df_ra['Mês'] = [r.mes for r in resumos_arm]
+                        # Reordenar e limpar colunas
+                        cols_ra = ['Mês', 'Armazém'] + [c for c in df_ra.columns if c not in ['Mês', 'Armazém', 'id', 'cenario_id', 'armazem_id']]
+                        df_ra = df_ra[cols_ra]
                         st.dataframe(format_dataframe(df_ra), hide_index=True)
                         st.download_button(label="Exportar Resumo Armazéns para Excel", data=export_to_excel(df_ra, "resumo_armazens"), file_name="resumo_armazens.xlsx")
             else:
-                st.info("Nenhuma movimentação encontrada.")
+                st.info("Nenhuma movimentação encontrada para o cenário selecionado.")
         except Exception as e:
             st.error(f"Erro ao carregar dashboard: {e}")
+
 
     elif choice == "Cenários de Simulação":
         st.subheader("Gerenciamento de Cenários de Simulação")
@@ -181,12 +201,42 @@ def main():
             
             if 'edit_sid' not in st.session_state or st.session_state.edit_sid != sel_cen_id:
                 st.session_state.edit_sid = sel_cen_id
-                st.session_state.df_fabs_edit = build_df_from_model(session.query(Fabrica).filter_by(cenario_id=sel_cen_id).all(), Fabrica)
-                st.session_state.df_arms_edit = build_df_from_model(session.query(Armazem).filter_by(cenario_id=sel_cen_id).all(), Armazem)
-                st.session_state.df_rots_edit = build_df_from_model(session.query(Rota).filter_by(cenario_id=sel_cen_id).all(), Rota)
-                st.session_state.df_pfabs_edit = build_df_from_model(session.query(PrevisaoFabrica).join(Fabrica).filter(Fabrica.cenario_id == sel_cen_id).all(), PrevisaoFabrica)
-                st.session_state.df_parms_edit = build_df_from_model(session.query(PrevisaoArmazem).join(Armazem).filter(Armazem.cenario_id == sel_cen_id).all(), PrevisaoArmazem)
-                st.session_state.df_safras_edit = build_df_from_model(session.query(SafraUnidade).filter_by(cenario_id=sel_cen_id).all(), SafraUnidade)
+                
+                # Fábricas
+                fabs_list = session.query(Fabrica).filter_by(cenario_id=sel_cen_id).all()
+                df_fabs = build_df_from_model(fabs_list, Fabrica)
+                if not df_fabs.empty: df_fabs['Fábrica'] = [f.nome for f in fabs_list]
+                st.session_state.df_fabs_edit = df_fabs
+                
+                # Armazéns
+                arms_list = session.query(Armazem).filter_by(cenario_id=sel_cen_id).all()
+                df_arms = build_df_from_model(arms_list, Armazem)
+                if not df_arms.empty: df_arms['Armazém'] = [a.nome for a in arms_list]
+                st.session_state.df_arms_edit = df_arms
+                
+                # Rotas
+                rots_list = session.query(Rota).filter_by(cenario_id=sel_cen_id).all()
+                df_rots = build_df_from_model(rots_list, Rota)
+                if not df_rots.empty:
+                    df_rots['Origem'] = [session.get(Armazem, r.armazem_id).nome for r in rots_list]
+                    df_rots['Destino'] = [session.get(Fabrica, r.fabrica_id).nome for r in rots_list]
+                st.session_state.df_rots_edit = df_rots
+                
+                # Previsões
+                pf_list = session.query(PrevisaoFabrica).join(Fabrica).filter(Fabrica.cenario_id == sel_cen_id).all()
+                df_pf = build_df_from_model(pf_list, PrevisaoFabrica)
+                if not df_pf.empty: df_pf['Fábrica'] = [session.get(Fabrica, p.fabrica_id).nome for p in pf_list]
+                st.session_state.df_pfabs_edit = df_pf
+                
+                pa_list = session.query(PrevisaoArmazem).join(Armazem).filter(Armazem.cenario_id == sel_cen_id).all()
+                df_pa = build_df_from_model(pa_list, PrevisaoArmazem)
+                if not df_pa.empty: df_pa['Armazém'] = [session.get(Armazem, p.armazem_id).nome for p in pa_list]
+                st.session_state.df_parms_edit = df_pa
+
+                # Safras
+                safras_list = session.query(SafraUnidade).filter_by(cenario_id=sel_cen_id).all()
+                st.session_state.df_safras_edit = build_df_from_model(safras_list, SafraUnidade)
+
 
             tab_fab, tab_arm, tab_rot, tab_prev, tab_safra, tab_opt = st.tabs(["Fábricas", "Armazéns", "Rotas", "Previsões", "Datas de Safra", "Otimizar Cenário"])
             
@@ -203,15 +253,22 @@ def main():
                     st.success("Salvo.")
 
             with tab_arm:
-                st.session_state.df_arms_edit = st.data_editor(st.session_state.df_arms_edit, key="editor_arms", hide_index=True, column_config=get_model_column_config(Armazem))
+                st.session_state.df_arms_edit = st.data_editor(st.session_state.df_arms_edit, key="editor_arms", hide_index=True, num_rows="dynamic", column_config=get_model_column_config(Armazem))
                 if st.button("Salvar Alterações Armazéns"):
                     for _, row in st.session_state.df_arms_edit.iterrows():
-                        a = session.get(Armazem, int(row['id']))
-                        if a:
-                            a.capacidade_estatica = float(row['Capacidade Estática (Ton)'])
-                            a.capacidade_expedicao_diaria = float(row['Expedição Diária (Ton)'])
+                        if 'id' in row and not pd.isna(row['id']):
+                            a = session.get(Armazem, int(row['id']))
+                            if a:
+                                a.nome = row['Armazém']
+                                a.capacidade_estatica = float(row['Capacidade Estática (Ton)'])
+                                a.capacidade_expedicao_diaria = float(row['Expedição Diária (Ton)'])
+                        else:
+                            new_a = Armazem(cenario_id=sel_cen_id, nome=row['Armazém'], capacidade_estatica=float(row['Capacidade Estática (Ton)']), capacidade_expedicao_diaria=float(row['Expedição Diária (Ton)']), estoque_inicial=row.get('Estoque Inicial (Ton)', 0))
+                            session.add(new_a)
                     session.commit()
-                    st.success("Salvo.")
+                    if 'edit_sid' in st.session_state: del st.session_state.edit_sid
+                    st.success("Atualizado.")
+                    st.rerun()
 
             with tab_rot:
                 st.session_state.df_rots_edit = st.data_editor(st.session_state.df_rots_edit, key="editor_rots", hide_index=True, column_config=get_model_column_config(Rota))
@@ -276,11 +333,20 @@ def main():
             with tab_opt:
                 estrategia = st.selectbox("Estratégia", ["Econômico", "Expedição", "Segurança"], key="strat_cen")
                 d_ini, d_fim = obter_range_previsoes(session, cenario_id=sel_cen_id)
-                if d_ini and d_fim:
-                    if st.button("Rodar Otimização Cenário", type="primary"):
-                        simular_periodo(session, d_ini, d_fim, cenario_id=sel_cen_id, estrategia=estrategia)
-                        st.success("Concluído.")
 
+                if d_ini and d_fim:
+                    if st.button("Rodar Otimização Cenário", type="primary", disabled=st.session_state.get('running_sim', False)):
+                        st.session_state.running_sim = True
+                        with st.spinner("Calculando Otimização..."):
+                            try:
+                                simular_periodo(session, d_ini, d_fim, cenario_id=sel_cen_id, estrategia=estrategia)
+                                st.success("Concluído.")
+                            except Exception as e:
+                                st.error(f"Erro: {e}")
+                            finally:
+                                st.session_state.running_sim = False
+                                st.rerun()
+                else: st.warning("Dados insuficientes.")
     elif choice == "Visualizar Dados":
         st.subheader("Edição do Planejado (Oficial)")
         tabela = st.selectbox("Selecione a Tabela", ["Fábricas", "Armazéns", "Rotas", "Previsões Fábrica", "Previsões Armazém", "Datas de Safra"])
@@ -297,8 +363,19 @@ def main():
             
         df = build_df_from_model(dados, curr_model)
 
-        # Resolve nomes para Datas de Safra no Oficial
-        if tabela == "Datas de Safra":
+        # Resolve nomes para exibição no Oficial
+        if tabela == "Fábricas":
+            df['Fábrica'] = [d.nome for d in dados]
+        elif tabela == "Armazéns":
+            df['Armazém'] = [d.nome for d in dados]
+        elif tabela == "Rotas":
+            df['Origem'] = [session.get(Armazem, d.armazem_id).nome for d in dados]
+            df['Destino'] = [session.get(Fabrica, d.fabrica_id).nome for d in dados]
+        elif tabela == "Previsões Fábrica":
+            df['Fábrica'] = [session.get(Fabrica, d.fabrica_id).nome for d in dados]
+        elif tabela == "Previsões Armazém":
+            df['Armazém'] = [session.get(Armazem, d.armazem_id).nome for d in dados]
+        elif tabela == "Datas de Safra":
             unidades = []
             for _, row in df.iterrows():
                 s_obj = session.get(SafraUnidade, int(row['id']))
@@ -309,20 +386,19 @@ def main():
                 unidades.append(name)
             df['Unidade'] = unidades
 
-        edited_df = st.data_editor(df, hide_index=True, key=f"vis_{tabela}", disabled=["id", "Fábrica", "Armazém", "Mês", "Tipo", "Unidade"], column_config=get_model_column_config(curr_model))
+        edited_df = st.data_editor(df, hide_index=True, key=f"vis_{tabela}", disabled=["id", "Fábrica", "Armazém", "Mês", "Tipo", "Unidade", "Origem", "Destino"], column_config=get_model_column_config(curr_model))
         
         if st.button(f"Salvar {tabela}"):
             for _, row in edited_df.iterrows():
                 obj = session.get(curr_model, int(row['id']))
                 if obj:
                     for col in edited_df.columns:
-                        if col == 'id' or 'Fábrica' in col or 'Armazém' in col or 'Mês' in col or 'Tipo' in col: continue
-                        # Busca o nome real da coluna no SQLAlchemy através do label
+                        if col == 'id' or 'Fábrica' in col or 'Armazém' in col or 'Mês' in col or 'Tipo' in col or 'Unidade' in col or 'Origem' in col or 'Destino' in col: continue
                         mapper = inspect(curr_model)
-                        for column in mapper.attrs:
-                            sa_col = getattr(curr_model, column.key).property.columns[0]
+                        for attr in mapper.column_attrs:
+                            sa_col = attr.columns[0]
                             if sa_col.info.get('label') == col:
-                                setattr(obj, column.key, row[col])
+                                setattr(obj, attr.key, row[col])
             session.commit()
             st.success("Salvo com sucesso!")
 
@@ -330,9 +406,18 @@ def main():
         st.subheader("Executar Otimização Oficial")
         estrategia = st.selectbox("Estratégia", ["Econômico", "Expedição", "Segurança"], key="strat_oficial")
         d_ini, d_fim = obter_range_previsoes(session, cenario_id=None)
-        if st.button("Rodar Otimização Completa", type="primary"):
-            simular_periodo(session, d_ini, d_fim, cenario_id=None, estrategia=estrategia)
-            st.success("Concluído.")
+        
+        if st.button("Rodar Otimização Completa", type="primary", disabled=st.session_state.get('running_sim', False)):
+            st.session_state.running_sim = True
+            with st.spinner("Calculando Otimização Oficial..."):
+                try:
+                    simular_periodo(session, d_ini, d_fim, cenario_id=None, estrategia=estrategia)
+                    st.success("Otimização Oficial concluída!")
+                except Exception as e:
+                    st.error(f"Erro: {e}")
+                finally:
+                    st.session_state.running_sim = False
+                    st.rerun()
 
     session.close()
 
