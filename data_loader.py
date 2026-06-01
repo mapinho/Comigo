@@ -84,6 +84,10 @@ def init_db():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         Base.metadata.create_all(engine)
+        
+        # Chama upgrade_db para garantir que colunas novas existam
+        upgrade_db(engine)
+        
         return sessionmaker(bind=engine)()
     except Exception as e:
         st.error("### ❌ Erro de Conexão com o Banco de Dados")
@@ -106,11 +110,13 @@ def init_db():
         st.stop()
         return None
 
-def upgrade_db():
+def upgrade_db(engine=None):
     try:
-        engine = get_engine()
-        Base.metadata.create_all(engine)
+        if engine is None:
+            engine, _ = get_engine()
+            
         with engine.connect() as conn:
+            # 1. Adiciona cenario_id em várias tabelas
             tables_to_upgrade = [
                 'fabricas', 'armazens', 'rotas', 
                 'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem'
@@ -121,6 +127,16 @@ def upgrade_db():
                     conn.commit()
                 except Exception:
                     pass
+            
+            # 2. Adiciona custo_frete_entressafra na tabela rotas
+            try:
+                conn.execute(text('ALTER TABLE "rotas" ADD COLUMN custo_frete_entressafra FLOAT DEFAULT 0;'))
+                conn.commit()
+                # Opcional: inicializa com o valor da safra se estiver zerado
+                conn.execute(text('UPDATE "rotas" SET custo_frete_entressafra = custo_frete_ton WHERE custo_frete_entressafra = 0;'))
+                conn.commit()
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -209,7 +225,8 @@ def load_routes(file_path):
                 armazem_id=armazem.id,
                 fabrica_id=fabrica.id,
                 distancia_km=row['distancia_km'],
-                custo_frete_ton=row['custo_frete_ton']
+                custo_frete_ton=row['custo_frete_ton'],
+                custo_frete_entressafra=row.get('custo_frete_entressafra', row['custo_frete_ton'])
             )
             session.add(rota)
             count += 1
