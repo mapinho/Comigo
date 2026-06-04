@@ -116,10 +116,17 @@ def upgrade_db(engine=None):
             engine, _ = get_engine()
             
         with engine.connect() as conn:
+            # 0. Adiciona is_oficial na tabela cenarios
+            try:
+                conn.execute(text('ALTER TABLE "cenarios" ADD COLUMN is_oficial BOOLEAN DEFAULT FALSE;'))
+                conn.commit()
+            except Exception:
+                pass
+
             # 1. Adiciona cenario_id em várias tabelas
             tables_to_upgrade = [
                 'fabricas', 'armazens', 'rotas', 
-                'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem'
+                'movimentacoes_diarias', 'resumo_mensal_fabrica', 'resumo_mensal_armazem', 'safras_unidades'
             ]
             for table in tables_to_upgrade:
                 try:
@@ -137,6 +144,31 @@ def upgrade_db(engine=None):
                 conn.commit()
             except Exception:
                 pass
+
+            # 3. Garante existência do Cenário Oficial e Migra Dados Órfãos
+            from sqlalchemy.orm import Session
+            with Session(engine) as session:
+                from models import Cenario
+                oficial = session.query(Cenario).filter_by(is_oficial=True).first()
+                if not oficial:
+                    # Tenta reaproveitar um 'Oficial' existente ou cria novo
+                    oficial = session.query(Cenario).filter_by(nome='Oficial (Planejado)').first()
+                    if oficial:
+                        oficial.is_oficial = True
+                    else:
+                        oficial = Cenario(nome='Oficial (Planejado)', is_oficial=True)
+                        session.add(oficial)
+                    session.commit()
+                
+                oficial_id = oficial.id
+                
+                # Migra registros NULL para o ID Oficial
+                for table in tables_to_upgrade:
+                    try:
+                        session.execute(text(f'UPDATE "{table}" SET cenario_id = :oid WHERE cenario_id IS NULL'), {'oid': oficial_id})
+                    except Exception:
+                        pass
+                session.commit()
     except Exception:
         pass
 
@@ -156,79 +188,80 @@ def clear_database():
     finally:
         session.close()
 
-def load_factories(file_path):
+def load_factories(file_path, cenario_id):
     df = pd.read_excel(file_path)
     session = init_db()
     if not session: return 0
-    session.query(Fabrica).filter(Fabrica.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
-        nome = row.get('nome')
-        if pd.isna(nome):
+        nome = str(row.get('nome')).strip()
+        if pd.isna(nome) or nome == 'nan':
             continue
-        fabrica = Fabrica(
-            cenario_id=None,
-            nome=str(nome).strip(),
-            capacidade_estatica=row['capacidade_estatica'],
-            capacidade_esmagamento_diaria=row['capacidade_esmagamento_diaria'],
-            capacidade_recebimento_diaria=row['capacidade_recebimento_diaria'],
-            limite_caminhoes=row['limite_caminhoes'],
-            carga_media_caminhao=row['carga_media_caminhao'],
-            estoque_inicial=row['estoque_inicial']
-        )
-        session.add(fabrica)
+        
+        # UPSERT logic
+        fabrica = session.query(Fabrica).filter_by(cenario_id=cenario_id, nome=nome).first()
+        if not fabrica:
+            fabrica = Fabrica(cenario_id=cenario_id, nome=nome)
+            session.add(fabrica)
+        
+        fabrica.capacidade_estatica = row['capacidade_estatica']
+        fabrica.capacidade_esmagamento_diaria = row['capacidade_esmagamento_diaria']
+        fabrica.capacidade_recebimento_diaria = row['capacidade_recebimento_diaria']
+        fabrica.limite_caminhoes = row['limite_caminhoes']
+        fabrica.carga_media_caminhao = row['carga_media_caminhao']
+        fabrica.estoque_inicial = row['estoque_inicial']
         count += 1
     session.commit()
     session.close()
     return count
 
-def load_warehouses(file_path):
+def load_warehouses(file_path, cenario_id):
     df = pd.read_excel(file_path)
     session = init_db()
     if not session: return 0
-    session.query(Armazem).filter(Armazem.cenario_id == None).delete()
     count = 0
     for _, row in df.iterrows():
-        nome = row.get('nome')
-        if pd.isna(nome):
+        nome = str(row.get('nome')).strip()
+        if pd.isna(nome) or nome == 'nan':
             continue
-        armazem = Armazem(
-            cenario_id=None,
-            nome=str(nome).strip(),
-            capacidade_estatica=row['capacidade_estatica'],
-            capacidade_expedicao_diaria=row['capacidade_expedicao_diaria'],
-            estoque_inicial=row['estoque_inicial']
-        )
-        session.add(armazem)
+        
+        # UPSERT logic
+        armazem = session.query(Armazem).filter_by(cenario_id=cenario_id, nome=nome).first()
+        if not armazem:
+            armazem = Armazem(cenario_id=cenario_id, nome=nome)
+            session.add(armazem)
+            
+        armazem.capacidade_estatica = row['capacidade_estatica']
+        armazem.capacidade_expedicao_diaria = row['capacidade_expedicao_diaria']
+        armazem.estoque_inicial = row['estoque_inicial']
         count += 1
     session.commit()
     session.close()
     return count
 
-def load_routes(file_path):
+def load_routes(file_path, cenario_id):
     df = pd.read_excel(file_path)
     session = init_db()
     if not session: return 0, 0
-    session.query(Rota).filter(Rota.cenario_id == None).delete()
     count = 0
     skipped = 0
     for _, row in df.iterrows():
         origem = str(row['origem']).strip()
         destino = str(row['destino']).strip()
 
-        armazem = session.query(Armazem).filter(Armazem.nome == origem, Armazem.cenario_id == None).first()
-        fabrica = session.query(Fabrica).filter(Fabrica.nome == destino, Fabrica.cenario_id == None).first()
+        armazem = session.query(Armazem).filter(Armazem.nome == origem, Armazem.cenario_id == cenario_id).first()
+        fabrica = session.query(Fabrica).filter(Fabrica.nome == destino, Fabrica.cenario_id == cenario_id).first()
 
         if armazem and fabrica:
-            rota = Rota(
-                cenario_id=None,
-                armazem_id=armazem.id,
-                fabrica_id=fabrica.id,
-                distancia_km=row['distancia_km'],
-                custo_frete_ton=row['custo_frete_ton'],
-                custo_frete_entressafra=row.get('custo_frete_entressafra', row['custo_frete_ton'])
-            )
-            session.add(rota)
+            # UPSERT logic
+            rota = session.query(Rota).filter_by(cenario_id=cenario_id, armazem_id=armazem.id, fabrica_id=fabrica.id).first()
+            if not rota:
+                rota = Rota(cenario_id=cenario_id, armazem_id=armazem.id, fabrica_id=fabrica.id)
+                session.add(rota)
+            
+            rota.distancia_km = row['distancia_km']
+            rota.custo_frete_ton = row['custo_frete_ton']
+            rota.custo_frete_entressafra = row.get('custo_frete_entressafra', row['custo_frete_ton'])
             count += 1
         else:
             skipped += 1
@@ -236,15 +269,10 @@ def load_routes(file_path):
     session.close()
     return count, skipped
 
-def load_previsoes(file_path):
+def load_previsoes(file_path, cenario_id):
     df = pd.read_excel(file_path)
     session = init_db()
     if not session: return 0, 0
-    # Deletar previsões que pertencem a fábricas/armazéns do Baseline
-    baseline_fab_ids = [f.id for f in session.query(Fabrica.id).filter(Fabrica.cenario_id == None).all()]
-    baseline_arm_ids = [a.id for a in session.query(Armazem.id).filter(Armazem.cenario_id == None).all()]
-    session.query(PrevisaoFabrica).filter(PrevisaoFabrica.fabrica_id.in_(baseline_fab_ids)).delete(synchronize_session=False)
-    session.query(PrevisaoArmazem).filter(PrevisaoArmazem.armazem_id.in_(baseline_arm_ids)).delete(synchronize_session=False)
     
     count = 0
     skipped = 0
@@ -252,31 +280,31 @@ def load_previsoes(file_path):
         nome_entidade = str(row['entidade']).strip()
         mes_ref = pd.to_datetime(row['mes_referencia']).date().replace(day=1)
         
-        # Tenta achar como fabrica no baseline
-        fabrica = session.query(Fabrica).filter(Fabrica.nome == nome_entidade, Fabrica.cenario_id == None).first()
+        # Tenta achar como fabrica no cenario
+        fabrica = session.query(Fabrica).filter(Fabrica.nome == nome_entidade, Fabrica.cenario_id == cenario_id).first()
         if fabrica:
-            prev = PrevisaoFabrica(
-                fabrica_id=fabrica.id,
-                mes_referencia=mes_ref,
-                recebimento_produtor=row.get('recebimento_produtor', 0),
-                vendas=row.get('vendas', 0),
-                eh_safra=row.get('eh_safra', 0)
-            )
-            session.add(prev)
+            # UPSERT logic
+            prev = session.query(PrevisaoFabrica).filter_by(fabrica_id=fabrica.id, mes_referencia=mes_ref).first()
+            if not prev:
+                prev = PrevisaoFabrica(fabrica_id=fabrica.id, mes_referencia=mes_ref)
+                session.add(prev)
+            
+            prev.recebimento_produtor = row.get('recebimento_produtor', 0)
+            prev.vendas = row.get('vendas', 0)
             count += 1
             continue
             
-        # Tenta achar como armazem no baseline
-        armazem = session.query(Armazem).filter(Armazem.nome == nome_entidade, Armazem.cenario_id == None).first()
+        # Tenta achar como armazem no cenario
+        armazem = session.query(Armazem).filter(Armazem.nome == nome_entidade, Armazem.cenario_id == cenario_id).first()
         if armazem:
-            prev = PrevisaoArmazem(
-                armazem_id=armazem.id,
-                mes_referencia=mes_ref,
-                recebimento_produtor=row.get('recebimento_produtor', 0),
-                vendas=row.get('vendas', 0),
-                eh_safra=row.get('eh_safra', 0)
-            )
-            session.add(prev)
+            # UPSERT logic
+            prev = session.query(PrevisaoArmazem).filter_by(armazem_id=armazem.id, mes_referencia=mes_ref).first()
+            if not prev:
+                prev = PrevisaoArmazem(armazem_id=armazem.id, mes_referencia=mes_ref)
+                session.add(prev)
+                
+            prev.recebimento_produtor = row.get('recebimento_produtor', 0)
+            prev.vendas = row.get('vendas', 0)
             count += 1
         else:
             skipped += 1

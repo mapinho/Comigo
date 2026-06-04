@@ -155,9 +155,9 @@ def simular_periodo(session: Session, data_inicio, data_fim_previsao, cenario_id
     c_id = int(cenario_id) if cenario_id is not None else None
 
     # REQUISITO: Limpeza Absoluta via ORM para evitar rastro de dados (ghost data)
-    session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id == c_id if c_id else MovimentacaoDiaria.cenario_id.is_(None)).delete(synchronize_session=False)
-    session.query(ResumoMensalFabrica).filter(ResumoMensalFabrica.cenario_id == c_id if c_id else ResumoMensalFabrica.cenario_id.is_(None)).delete(synchronize_session=False)
-    session.query(ResumoMensalArmazem).filter(ResumoMensalArmazem.cenario_id == c_id if c_id else ResumoMensalArmazem.cenario_id.is_(None)).delete(synchronize_session=False)
+    session.query(MovimentacaoDiaria).filter(MovimentacaoDiaria.cenario_id == c_id).delete(synchronize_session=False)
+    session.query(ResumoMensalFabrica).filter(ResumoMensalFabrica.cenario_id == c_id).delete(synchronize_session=False)
+    session.query(ResumoMensalArmazem).filter(ResumoMensalArmazem.cenario_id == c_id).delete(synchronize_session=False)
     session.commit()
 
     # Ajuste data_inicio para o dia 1 do mês para capturar o volume total.

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
@@ -11,6 +11,7 @@ class Cenario(Base):
     id = Column(Integer, primary_key=True, info={'label': 'ID', 'type': 'number', 'format': '%d', 'disabled': True})
     nome = Column(String(100), unique=True, nullable=False, info={'label': 'Nome do Cenário'})
     data_criacao = Column(DateTime, default=datetime.datetime.now, info={'label': 'Data de Criação', 'type': 'date', 'disabled': True})
+    is_oficial = Column(Boolean, default=False, info={'hidden': True})
 
 class Fabrica(Base):
     __tablename__ = 'fabricas'
