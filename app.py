@@ -37,38 +37,34 @@ def main():
         with col_s2:
             comp_cenario_id = st.selectbox("Cenário Comparação", options=list(cenario_options.keys()), format_func=lambda x: cenario_options[x], index=0 if len(all_cenarios) > 0 else None, key='dash_comp')
 
-        # Lógica inteligente para definir o range de datas padrão do Dashboard
+        # Lógica para definir o range de datas padrão do Dashboard
+        # Dispara quando o cenário muda ou quando os filtros são resetados
         if 'dash_sid' not in st.session_state or st.session_state.dash_sid != selected_cenario_id:
             st.session_state.dash_sid = selected_cenario_id
             
-            # Busca as datas reais das movimentações no banco
+            # Busca as datas reais das movimentações no banco para este cenário
             min_d = session.query(func.min(MovimentacaoDiaria.data)).filter(MovimentacaoDiaria.cenario_id == selected_cenario_id).scalar()
             max_d = session.query(func.max(MovimentacaoDiaria.data)).filter(MovimentacaoDiaria.cenario_id == selected_cenario_id).scalar()
             
             if min_d and max_d:
-                st.session_state.dash_data_ini = min_d
-                st.session_state.dash_data_fim = max_d
+                st.session_state.input_data_ini = min_d
+                st.session_state.input_data_fim = max_d
             else:
-                st.session_state.dash_data_ini = datetime.date.today() - datetime.timedelta(days=30)
-                st.session_state.dash_data_fim = datetime.date.today() + datetime.timedelta(days=30)
+                st.session_state.input_data_ini = datetime.date.today() - datetime.timedelta(days=30)
+                st.session_state.input_data_fim = datetime.date.today() + datetime.timedelta(days=30)
             
         col1, col2, col3 = st.columns([2, 2, 1])
         with col1:
-            data_ini = st.date_input("Data Início", value=st.session_state.dash_data_ini, key='input_data_ini')
+            data_ini = st.date_input("Data Início", key='input_data_ini')
         with col2:
-            data_fim = st.date_input("Data Fim", value=st.session_state.dash_data_fim, key='input_data_fim')
+            data_fim = st.date_input("Data Fim", key='input_data_fim')
         with col3:
             st.write("") 
             st.write("")
             if st.button("Resetar Filtros", width='stretch'):
-                # Limpa todas as chaves de estado do dashboard para forçar recálculo
-                keys_to_clear = ['dash_sid', 'dash_data_ini', 'dash_data_fim', 'input_data_ini', 'input_data_fim']
-                for k in keys_to_clear:
-                    if k in st.session_state: del st.session_state[k]
+                # Simplesmente remove a chave de controle para forçar o recálculo do range de datas
+                if 'dash_sid' in st.session_state: del st.session_state['dash_sid']
                 st.rerun()
-
-        st.session_state.dash_data_ini = data_ini
-        st.session_state.dash_data_fim = data_fim
             
         try:
             movs = session.query(MovimentacaoDiaria).filter(
@@ -379,26 +375,35 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            f_fab = st.file_uploader("Fábricas", type=["xlsx"])
-            if f_fab and st.button("Processar Fábricas"):
-                res = load_factories(f_fab, sel_cen_id)
-                st.success(f"{res} fábricas processadas.")
+            with st.container(border=True):
+                f_fab = st.file_uploader("Upload: Fábricas", type=["xlsx"], key="up_fab")
+                if f_fab and st.button("🚀 Processar Fábricas", key="btn_fab"):
+                    with st.spinner("Processando fábricas..."):
+                        res = load_factories(f_fab, sel_cen_id)
+                        st.success(f"{res} fábricas processadas.")
                 
-            f_arm = st.file_uploader("Armazéns", type=["xlsx"])
-            if f_arm and st.button("Processar Armazéns"):
-                res = load_warehouses(f_arm, sel_cen_id)
-                st.success(f"{res} armazéns processados.")
+            with st.container(border=True):
+                f_arm = st.file_uploader("Upload: Armazéns", type=["xlsx"], key="up_arm")
+                if f_arm and st.button("🚀 Processar Armazéns", key="btn_arm"):
+                    with st.spinner("Processando armazéns..."):
+                        res = load_warehouses(f_arm, sel_cen_id)
+                        st.success(f"{res} armazéns processados.")
                 
         with col2:
-            f_rot = st.file_uploader("Rotas", type=["xlsx"])
-            if f_rot and st.button("Processar Rotas"):
-                res, skip = load_routes(f_rot, sel_cen_id)
-                st.success(f"{res} rotas processadas. ({skip} ignoradas por falta de unidades)")
+            with st.container(border=True):
+                f_rot = st.file_uploader("Upload: Rotas", type=["xlsx"], key="up_rot")
+                if f_rot and st.button("🚀 Processar Rotas", key="btn_rot"):
+                    with st.spinner("Processando rotas..."):
+                        res, skip = load_routes(f_rot, sel_cen_id)
+                        st.success(f"{res} rotas processadas. ({skip} ignoradas)")
                 
-            f_prev = st.file_uploader("Previsões", type=["xlsx"])
-            if f_prev and st.button("Processar Previsões"):
-                res, skip = load_previsoes(f_prev, sel_cen_id)
-                st.success(f"{res} previsões processadas. ({skip} ignoradas)")
+            with st.container(border=True):
+                f_prev = st.file_uploader("Upload: Previsões", type=["xlsx"], key="up_prev")
+                if f_prev and st.button("🚀 Processar Previsões", key="btn_prev"):
+                    with st.spinner("Processando previsões..."):
+                        res, skip = load_previsoes(f_prev, sel_cen_id)
+                        st.success(f"{res} previsões processadas. ({skip} ignoradas)")
+
 
         if st.sidebar.button("⚠️ Limpar TODO o Banco de Dados"):
             res, msg = clear_database()
