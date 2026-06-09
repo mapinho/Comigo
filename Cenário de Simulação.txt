@@ -1,0 +1,8 @@
+Funcionalidades do "Sistema de Planejamento de Transbordo - Comigo" para a implementação de "Cenários de Simulação":
+1. Deve ter um nome único para identificação do cenário de simulação;
+2. Para cada cenário Data entry para mudar os dados das fábricas, volumes recebidos pelo produtor, volume de vendas diretas, capacidade de recepção e capacidade de esmagamento;
+3. Para cada cenário Data entry para mudar os dados dos armazéns, distâncias e custos entre as fábricas, volumes recebidos pelo produtor, volume de vendas diretas e capacidade de expedição;
+4. Para cada cenário Data entry para inserir armazéns fictícios, com todas as propriedades de um armazém físico para simular a viabilidade de um novo armazém;
+5. Rodar a otimização para o cenário;
+6. Gerar um "Dashboard de Simulação" nos mesmos moldes do "Dashboard de Movimentações";
+7. No dashlet de indicadores, comparar o cenário contra o planejado e mostrar a diferença percentual entre os valores.

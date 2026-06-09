@@ -49,10 +49,11 @@ def get_model_column_config(model_class):
             disabled = info.get('disabled', False)
             
             if col_type == 'number':
+                is_id = label.lower() == 'id' or label.lower().startswith('id ') or label.lower().endswith(' id')
                 config[label] = st.column_config.NumberColumn(
                     label=label,
-                    format="%.2f",
-                    step=info.get('step', 0.01),
+                    format="%d" if is_id else "%.2f",
+                    step=1 if is_id else info.get('step', 0.01),
                     disabled=disabled
                 )
             elif col_type == 'date':
@@ -102,10 +103,13 @@ def format_dataframe(df):
     
     for col in df_raw.columns:
         col_lower = str(col).lower()
+        is_id = col_lower == 'id' or col_lower.startswith('id ') or col_lower.endswith(' id')
         
         # Só formata se a coluna for numérica ou contiver números
         if df_raw[col].dtype in ['float64', 'int64']:
-            if any(k in col_lower for k in kw_money):
+            if is_id:
+                format_dict[col] = lambda x: f"{int(x)}" if pd.notna(x) and str(x).strip().upper() != "TOTAL" else x
+            elif any(k in col_lower for k in kw_money):
                 format_dict[col] = lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) else ""
             elif any(k in col_lower for k in kw_volume):
                 format_dict[col] = lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) else ""
