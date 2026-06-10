@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 if os.path.exists(".env"):
     load_dotenv()
 
+@st.cache_resource
 def get_engine():
     # 1. Busca no st.secrets (forma segura)
     user, password, host, port, db = None, None, None, None, None
@@ -80,13 +81,17 @@ def get_engine():
 def init_db():
     try:
         engine, source = get_engine()
-        # Ping de teste
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        Base.metadata.create_all(engine)
         
-        # Chama upgrade_db para garantir que colunas novas existam
-        upgrade_db(engine)
+        # Só executa create_all e upgrade_db uma vez por execução do app
+        if 'db_initialized' not in st.session_state:
+            # Ping de teste
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            Base.metadata.create_all(engine)
+            
+            # Chama upgrade_db para garantir que colunas novas existam
+            upgrade_db(engine)
+            st.session_state.db_initialized = True
         
         return sessionmaker(bind=engine)()
     except Exception as e:
@@ -172,25 +177,47 @@ def upgrade_db(engine=None):
     except Exception:
         pass
 
-def clear_database():
-    session = init_db()
+def clear_database(session=None):
+    close_session = False
+    if not session:
+        session = init_db()
+        close_session = True
+        
     if not session: return False, "Erro ao inicializar banco."
     try:
         # Pega as tabelas na ordem reversa de dependência
         tables = [table.name for table in reversed(Base.metadata.sorted_tables)]
+        
+        # Detecta se é SQLite
+        is_sqlite = session.bind.dialect.name == 'sqlite'
+        
         for table in tables:
-            session.execute(text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;'))
+            if is_sqlite:
+                session.execute(text(f'DELETE FROM "{table}";'))
+            else:
+                session.execute(text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;'))
+        
+        if is_sqlite:
+            # Reseta sequências no SQLite
+            session.execute(text("DELETE FROM sqlite_sequence;"))
+            
         session.commit()
         return True, "Banco de dados limpo e identidades reiniciadas com sucesso."
     except Exception as e:
         session.rollback()
         return False, f"Erro ao limpar banco de dados: {str(e)}"
     finally:
-        session.close()
+        if close_session:
+            session.close()
 
-def load_factories(file_path, cenario_id):
+def load_factories(file_path, cenario_id, session=None):
     df = pd.read_excel(file_path)
-    session = init_db()
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    close_session = False
+    if not session:
+        session = init_db()
+        close_session = True
+    
     if not session: return 0
     count = 0
     for _, row in df.iterrows():
@@ -212,12 +239,18 @@ def load_factories(file_path, cenario_id):
         fabrica.estoque_inicial = row['estoque_inicial']
         count += 1
     session.commit()
-    session.close()
+    if close_session:
+        session.close()
     return count
 
-def load_warehouses(file_path, cenario_id):
+def load_warehouses(file_path, cenario_id, session=None):
     df = pd.read_excel(file_path)
-    session = init_db()
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    close_session = False
+    if not session:
+        session = init_db()
+        close_session = True
+        
     if not session: return 0
     count = 0
     for _, row in df.iterrows():
@@ -236,12 +269,18 @@ def load_warehouses(file_path, cenario_id):
         armazem.estoque_inicial = row['estoque_inicial']
         count += 1
     session.commit()
-    session.close()
+    if close_session:
+        session.close()
     return count
 
-def load_routes(file_path, cenario_id):
+def load_routes(file_path, cenario_id, session=None):
     df = pd.read_excel(file_path)
-    session = init_db()
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    close_session = False
+    if not session:
+        session = init_db()
+        close_session = True
+        
     if not session: return 0, 0
     count = 0
     skipped = 0
@@ -266,12 +305,18 @@ def load_routes(file_path, cenario_id):
         else:
             skipped += 1
     session.commit()
-    session.close()
+    if close_session:
+        session.close()
     return count, skipped
 
-def load_previsoes(file_path, cenario_id):
+def load_previsoes(file_path, cenario_id, session=None):
     df = pd.read_excel(file_path)
-    session = init_db()
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    close_session = False
+    if not session:
+        session = init_db()
+        close_session = True
+        
     if not session: return 0, 0
     
     count = 0
@@ -310,5 +355,6 @@ def load_previsoes(file_path, cenario_id):
             skipped += 1
             
     session.commit()
-    session.close()
+    if close_session:
+        session.close()
     return count, skipped

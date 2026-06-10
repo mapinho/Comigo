@@ -360,11 +360,89 @@ def main():
                 with col_o2:
                     st.write("### Exportar Dados")
                     st.write("Baixe os dados atuais deste cenário no formato de carga para edição externa.")
+                    
+                    # 1. Formata Fábricas para o padrão do template de importação
+                    df_fabs = st.session_state.get('df_fabs_edit', pd.DataFrame())
+                    if not df_fabs.empty:
+                        df_fabs = df_fabs[df_fabs['Fábrica'].astype(str).str.upper() != 'TOTAL']
+                        df_fabs_exp = pd.DataFrame({
+                            'nome': df_fabs['Fábrica'],
+                            'capacidade_estatica': df_fabs['Capacidade Estática (Ton)'],
+                            'capacidade_esmagamento_diaria': df_fabs['Esmagamento Diário (Ton)'],
+                            'capacidade_recebimento_diaria': df_fabs['Recebimento Diário (Ton)'],
+                            'limite_caminhoes': df_fabs['Limite de Caminhões'],
+                            'carga_media_caminhao': df_fabs['Carga Média (Ton)'],
+                            'estoque_inicial': df_fabs['Estoque Inicial (Ton)']
+                        })
+                    else:
+                        df_fabs_exp = pd.DataFrame(columns=[
+                            'nome', 'capacidade_estatica', 'capacidade_esmagamento_diaria', 
+                            'capacidade_recebimento_diaria', 'limite_caminhoes', 
+                            'carga_media_caminhao', 'estoque_inicial'
+                        ])
+
+                    # 2. Formata Armazéns para o padrão do template de importação
+                    df_arms = st.session_state.get('df_arms_edit', pd.DataFrame())
+                    if not df_arms.empty:
+                        df_arms = df_arms[df_arms['Armazém'].astype(str).str.upper() != 'TOTAL']
+                        df_arms_exp = pd.DataFrame({
+                            'nome': df_arms['Armazém'],
+                            'capacidade_estatica': df_arms['Capacidade Estática (Ton)'],
+                            'capacidade_expedicao_diaria': df_arms['Expedição Diária (Ton)'],
+                            'estoque_inicial': df_arms['Estoque Inicial (Ton)']
+                        })
+                    else:
+                        df_arms_exp = pd.DataFrame(columns=['nome', 'capacidade_estatica', 'capacidade_expedicao_diaria', 'estoque_inicial'])
+
+                    # 3. Formata Rotas para o padrão do template de importação
+                    df_rots = st.session_state.get('df_rots_edit', pd.DataFrame())
+                    if not df_rots.empty:
+                        df_rots = df_rots[df_rots['Origem'].astype(str).str.upper() != 'TOTAL']
+                        df_rots_exp = pd.DataFrame({
+                            'origem': df_rots['Origem'],
+                            'destino': df_rots['Destino'],
+                            'distancia_km': df_rots['Distância (km)'],
+                            'custo_frete_ton': df_rots['Custo Safra (R$/Ton)']
+                        })
+                        if 'Custo Entressafra (R$/Ton)' in df_rots.columns:
+                            df_rots_exp['custo_frete_entressafra'] = df_rots['Custo Entressafra (R$/Ton)']
+                    else:
+                        df_rots_exp = pd.DataFrame(columns=['origem', 'destino', 'distancia_km', 'custo_frete_ton', 'custo_frete_entressafra'])
+
+                    # 4. Formata Previsões para o padrão do template de importação
+                    df_pf = st.session_state.get('df_pfabs_edit', pd.DataFrame())
+                    df_pa = st.session_state.get('df_parms_edit', pd.DataFrame())
+                    prev_parts = []
+                    if not df_pf.empty:
+                        df_pf = df_pf[df_pf['Fábrica'].astype(str).str.upper() != 'TOTAL']
+                        df_pf_exp = pd.DataFrame({
+                            'entidade': df_pf['Fábrica'],
+                            'mes_referencia': df_pf['Mês'],
+                            'recebimento_produtor': df_pf['Recebimento Produtor (Ton)'],
+                            'vendas': df_pf['Vendas (Ton)'],
+                            'eh_safra': 0
+                        })
+                        prev_parts.append(df_pf_exp)
+                    if not df_pa.empty:
+                        df_pa = df_pa[df_pa['Armazém'].astype(str).str.upper() != 'TOTAL']
+                        df_pa_exp = pd.DataFrame({
+                            'entidade': df_pa['Armazém'],
+                            'mes_referencia': df_pa['Mês'],
+                            'recebimento_produtor': df_pa['Recebimento Produtor (Ton)'],
+                            'vendas': df_pa['Vendas (Ton)'],
+                            'eh_safra': 0
+                        })
+                        prev_parts.append(df_pa_exp)
+                    if prev_parts:
+                        df_prev_exp = pd.concat(prev_parts, ignore_index=True)
+                    else:
+                        df_prev_exp = pd.DataFrame(columns=['entidade', 'mes_referencia', 'recebimento_produtor', 'vendas', 'eh_safra'])
+
                     # Botões de download para as 4 tabelas principais
-                    st.download_button("📥 Fábricas (Excel)", data=export_to_excel(st.session_state.df_fabs_edit), file_name=f"fabricas_{sel_cen_id}.xlsx")
-                    st.download_button("📥 Armazéns (Excel)", data=export_to_excel(st.session_state.df_arms_edit), file_name=f"armazens_{sel_cen_id}.xlsx")
-                    st.download_button("📥 Rotas (Excel)", data=export_to_excel(st.session_state.df_rots_edit), file_name=f"rotas_{sel_cen_id}.xlsx")
-                    st.download_button("📥 Previsões (Excel)", data=export_to_excel(pd.concat([st.session_state.df_pfabs_edit, st.session_state.df_parms_edit])), file_name=f"previsoes_{sel_cen_id}.xlsx")
+                    st.download_button("📥 Fábricas (Excel)", data=export_to_excel(df_fabs_exp), file_name=f"fabricas_{sel_cen_id}.xlsx")
+                    st.download_button("📥 Armazéns (Excel)", data=export_to_excel(df_arms_exp), file_name=f"armazens_{sel_cen_id}.xlsx")
+                    st.download_button("📥 Rotas (Excel)", data=export_to_excel(df_rots_exp), file_name=f"rotas_{sel_cen_id}.xlsx")
+                    st.download_button("📥 Previsões (Excel)", data=export_to_excel(df_prev_exp), file_name=f"previsoes_{sel_cen_id}.xlsx")
 
 
     elif choice == "Carga de Dados":
@@ -379,14 +457,14 @@ def main():
                 f_fab = st.file_uploader("Upload: Fábricas", type=["xlsx"], key="up_fab")
                 if f_fab and st.button("🚀 Processar Fábricas", key="btn_fab"):
                     with st.spinner("Processando fábricas..."):
-                        res = load_factories(f_fab, sel_cen_id)
+                        res = load_factories(f_fab, sel_cen_id, session=session)
                         st.success(f"{res} fábricas processadas.")
                 
             with st.container(border=True):
                 f_arm = st.file_uploader("Upload: Armazéns", type=["xlsx"], key="up_arm")
                 if f_arm and st.button("🚀 Processar Armazéns", key="btn_arm"):
                     with st.spinner("Processando armazéns..."):
-                        res = load_warehouses(f_arm, sel_cen_id)
+                        res = load_warehouses(f_arm, sel_cen_id, session=session)
                         st.success(f"{res} armazéns processados.")
                 
         with col2:
@@ -394,19 +472,19 @@ def main():
                 f_rot = st.file_uploader("Upload: Rotas", type=["xlsx"], key="up_rot")
                 if f_rot and st.button("🚀 Processar Rotas", key="btn_rot"):
                     with st.spinner("Processando rotas..."):
-                        res, skip = load_routes(f_rot, sel_cen_id)
+                        res, skip = load_routes(f_rot, sel_cen_id, session=session)
                         st.success(f"{res} rotas processadas. ({skip} ignoradas)")
                 
             with st.container(border=True):
                 f_prev = st.file_uploader("Upload: Previsões", type=["xlsx"], key="up_prev")
                 if f_prev and st.button("🚀 Processar Previsões", key="btn_prev"):
                     with st.spinner("Processando previsões..."):
-                        res, skip = load_previsoes(f_prev, sel_cen_id)
+                        res, skip = load_previsoes(f_prev, sel_cen_id, session=session)
                         st.success(f"{res} previsões processadas. ({skip} ignoradas)")
 
 
         if st.sidebar.button("⚠️ Limpar TODO o Banco de Dados"):
-            res, msg = clear_database()
+            res, msg = clear_database(session=session)
             if res: st.success(msg)
             else: st.error(msg)
 
