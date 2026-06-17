@@ -6,7 +6,7 @@ from calculations import simular_periodo, obter_range_previsoes
 from models import Fabrica, Armazem, Rota, PrevisaoFabrica, PrevisaoArmazem, MovimentacaoDiaria, ResumoMensalFabrica, ResumoMensalArmazem, Cenario, SafraUnidade
 import scenarios
 import datetime
-from sqlalchemy import func, inspect
+from sqlalchemy import func
 from utils import export_to_excel, format_dataframe, format_volume, format_valor, get_model_column_config, build_df_from_model, append_totals_row
 
 st.set_page_config(page_title="Comigo - Transbordo de Soja", layout="wide")
@@ -15,7 +15,8 @@ def main():
     try:
         st.sidebar.image("logo.svg", width='stretch')
     except Exception:
-        pass
+        # Silently ignore if logo.svg is missing or fails to load, preventing app crash
+        st.sidebar.empty()
 
     st.title("Sistema de Planejamento de Transbordo - Comigo")
     

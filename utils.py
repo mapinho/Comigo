@@ -124,7 +124,8 @@ def format_dataframe(df):
                         format_dict[col] = lambda x: f"R$ {float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) and x != "" else x
                      elif any(k in col_lower for k in kw_volume):
                         format_dict[col] = lambda x: f"{float(x):,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) and x != "" else x
-            except: pass
+            except (ValueError, TypeError):
+                pass
 
     return df_raw.style.format(format_dict, na_rep="")
 

@@ -37,7 +37,8 @@ def get_engine():
                     source = "Streamlit Secrets (Campos)"
     except Exception:
         # Localmente sem secrets.toml, st.secrets falha. Ignoramos.
-        pass
+        import logging
+        logging.getLogger(__name__).debug("st.secrets falhou; assumindo ambiente local.")
 
     # 2. Busca no ambiente (Local via .env ou OS)
     if not config_from_secrets:
@@ -125,8 +126,9 @@ def upgrade_db(engine=None):
             try:
                 conn.execute(text('ALTER TABLE "cenarios" ADD COLUMN is_oficial BOOLEAN DEFAULT FALSE;'))
                 conn.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Coluna is_oficial pode já existir: {e}")
 
             # 1. Adiciona cenario_id em várias tabelas
             tables_to_upgrade = [
@@ -137,8 +139,9 @@ def upgrade_db(engine=None):
                 try:
                     conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN cenario_id INTEGER REFERENCES cenarios(id) ON DELETE CASCADE;'))
                     conn.commit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).debug(f"Coluna cenario_id na tabela {table} pode já existir: {e}")
             
             # 2. Adiciona custo_frete_entressafra na tabela rotas
             try:
@@ -147,8 +150,9 @@ def upgrade_db(engine=None):
                 # Opcional: inicializa com o valor da safra se estiver zerado
                 conn.execute(text('UPDATE "rotas" SET custo_frete_entressafra = custo_frete_ton WHERE custo_frete_entressafra = 0;'))
                 conn.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Coluna custo_frete_entressafra pode já existir: {e}")
 
             # 3. Garante existência do Cenário Oficial e Migra Dados Órfãos
             from sqlalchemy.orm import Session
@@ -171,11 +175,13 @@ def upgrade_db(engine=None):
                 for table in tables_to_upgrade:
                     try:
                         session.execute(text(f'UPDATE "{table}" SET cenario_id = :oid WHERE cenario_id IS NULL'), {'oid': oficial_id})
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).debug(f"Falha ao migrar dados órfãos da tabela {table}: {e}")
                 session.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Erro ao atualizar estrutura do banco de dados: {e}")
 
 def clear_database(session=None):
     close_session = False

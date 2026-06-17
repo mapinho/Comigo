@@ -4,7 +4,7 @@ import pandas as pd
 import datetime
 from models import Fabrica, Armazem, Rota, MovimentacaoDiaria, PrevisaoFabrica, PrevisaoArmazem, ResumoMensalFabrica, ResumoMensalArmazem, SafraUnidade
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func
 
 # Configuração de logging básico
 logging.basicConfig(level=logging.INFO)

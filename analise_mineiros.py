@@ -1,7 +1,6 @@
 import pandas as pd
 from data_loader import init_db
 from models import Cenario, Armazem, Fabrica, MovimentacaoDiaria, ResumoMensalFabrica
-import datetime
 
 session = init_db()
 

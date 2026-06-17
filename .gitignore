@@ -4,3 +4,4 @@ __pycache__/
 templates/
 transbordo_db/
 *.db
+*.skill
