@@ -127,9 +127,12 @@ def main():
                     
                     with col_m2:
                         st.write("**Indicadores Tonelada**")
-                        delta_vol = f"{((total_vol/baseline_vol)-1)*100:.1f}% vs Comparação" if (baseline_vol and baseline_vol > 0) else None
+                        val_pct = ((total_vol/baseline_vol)-1)*100 if (baseline_vol and baseline_vol > 0) else 0.0
+                        delta_vol = f"{val_pct:.1f}% vs Comparação".replace('.', ',') if (baseline_vol and baseline_vol > 0) else None
                         st.metric("Total Movimentado (Ton)", format_volume(total_vol), delta=delta_vol)
-                        delta_cost = f"{((total_cost/baseline_cost)-1)*100:.1f}% vs Comparação" if (baseline_cost and baseline_cost > 0) else None
+                        
+                        val_cost_pct = ((total_cost/baseline_cost)-1)*100 if (baseline_cost and baseline_cost > 0) else 0.0
+                        delta_cost = f"{val_cost_pct:.1f}% vs Comparação".replace('.', ',') if (baseline_cost and baseline_cost > 0) else None
                         st.metric("Custo Total (R$)", format_valor(total_cost), delta=delta_cost, delta_color="inverse")
                     
                     with col_m3:
@@ -329,16 +332,18 @@ def main():
 
 
             with tab_safra:
-                df_show = append_totals_row(st.session_state.df_safras_edit)
+                df_show = st.session_state.df_safras_edit
                 edited = st.data_editor(df_show, key="esaf", hide_index=True, disabled=["id", "Tipo", "Unidade"], column_config=get_model_column_config(SafraUnidade))
                 if st.button("Salvar Datas"):
-                    for _, row in edited[edited['Unidade'] != 'TOTAL'].iterrows():
+                    for _, row in edited.iterrows():
+                        if pd.isna(row.get('id')) or row.get('id') == "":
+                            continue
                         s = session.get(SafraUnidade, int(row['id']))
                         if s:
                             s.data_inicio = row['Início']
                             s.data_fim = row['Fim']
                     session.commit()
-                    st.success("Salvo.")
+                    st.success("Salvo com sucesso!")
 
             with tab_opt:
                 col_o1, col_o2 = st.columns(2)

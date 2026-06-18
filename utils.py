@@ -52,7 +52,7 @@ def get_model_column_config(model_class):
                 is_id = label.lower() == 'id' or label.lower().startswith('id ') or label.lower().endswith(' id')
                 config[label] = st.column_config.NumberColumn(
                     label=label,
-                    format="%d" if is_id else "%.2f",
+                    format="%d" if is_id else info.get('format', 'localized'),
                     step=1 if is_id else info.get('step', 0.01),
                     disabled=disabled
                 )
