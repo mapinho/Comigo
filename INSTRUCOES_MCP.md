@@ -96,19 +96,34 @@ Para implantar e disponibilizar a solução para clientes e outros consultores e
       restart: unless-stopped
       ports:
         - "8000:8000"
-      command: mcp run mcp_server.py --transport sse --host 0.0.0.0 --port 8000
+      command: fastmcp run mcp_server.py --transport sse --host 0.0.0.0 --port 8000
     ```
 2.  **Roteamento e SSL no Apache (`comigo-le-ssl.conf`):**
-    O Apache está configurado para atuar como proxy reverso seguro. Todas as requisições destinadas ao caminho `/mcp/` são encaminhadas internamente para o contêiner do MCP na porta `8000`, protegendo a transmissão com criptografia HTTPS TLS:
+    O Apache está configurado para atuar como proxy reverso seguro. Como o Starlette/FastMCP responde e redireciona os endpoints de conexão (`/sse`) e envio de mensagens (`/messages`), nós mapeamos as rotas de forma direta para evitar loops ou redirecionamentos indesejados de porta:
     ```apache
-    ProxyPass /mcp/ http://127.0.0.1:8000/
-    ProxyPassReverse /mcp/ http://127.0.0.1:8000/
-    ```
+    # Proxy para o canal de conexão SSE do MCP Server
+    <Location "/sse">
+        ProxyPass http://127.0.0.1:8000/sse
+        ProxyPassReverse http://127.0.0.1:8000/sse
+        SetEnv no-gzip 1
+        SetEnv dont-vary 1
+        Header set Connection "keep-alive"
+        Header set Content-Type "text/event-stream"
+        Header set Cache-Control "no-cache"
+    </Location>
+
+    # Proxy para o canal de envio de mensagens do MCP Server (JSON-RPC)
+    <Location "/messages">
+        ProxyPass http://127.0.0.1:8000/messages
+        ProxyPassReverse http://127.0.0.1:8000/messages
+    </Location>
+
 3.  **Endpoint Público do MCP:**
-    O endereço público do servidor MCP para integração externa será:
+    O endereço público do servidor MCP para integração com o Vertex AI ou clientes será:
     ```text
-    https://comigo.vectorconsulting.com.br/mcp/sse
+    https://comigo.vectorconsulting.com.br/sse
     ```
+
 4.  **Registro no Vertex AI / Gemini Enterprise:**
     No painel do Google Cloud Platform (Vertex AI Agent Builder), crie um novo agente ou extensão do tipo **MCP** e aponte o endpoint para a URL pública segura acima. O Gemini Pro no ambiente corporativo se comunicará nativamente e em tempo real com os dados de transbordo de soja da Comigo.
 
