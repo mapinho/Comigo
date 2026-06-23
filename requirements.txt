@@ -7,3 +7,5 @@ python-dotenv
 plotly
 ortools
 fastmcp
+mcp[cli]
+mcp
