@@ -35,6 +35,6 @@ services:
       - .env
     command: >
       sh -c "pip install --no-cache-dir -r requirements.txt &&
-             mcp run mcp_server.py --transport sse --host 0.0.0.0 --port 8000"
+             fastmcp run mcp_server.py --transport sse --host 0.0.0.0 --port 8000"
     environment:
       - TZ=America/Sao_Paulo
