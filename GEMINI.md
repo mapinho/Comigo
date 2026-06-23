@@ -53,3 +53,8 @@ Os campos no `models.py` utilizam o parâmetro `info` para guiar a UI:
 1. **Carga de Dados:** `data_loader.py` gerencia a conexão e clonagem.
 2. **Cálculos:** `calculations.py` contém o motor de otimização diário.
 3. **Exportação:** Todas as tabelas devem ter opção de exportação para Excel via `export_to_excel`.
+
+## 7. Assistente de Dados Inteligente (MCP Server)
+O sistema possui suporte nativo ao protocolo **Model Context Protocol (MCP)** para permitir que LLMs conectem-se e analisem de forma autônoma a nossa base de dados logística.
+- **Servidor:** `mcp_server.py` (desenvolvido usando o framework `fastmcp`).
+- **Como Utilizar:** Consulte o guia detalhado em `INSTRUCOES_MCP.md` para integrar com o **Claude Desktop** e com o **Gemini** (via Cursor, Cline ou pontes SSE).

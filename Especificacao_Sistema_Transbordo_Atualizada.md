@@ -141,3 +141,22 @@ A função objetivo pondera prioridades logísticas:
 ### 5.4. Gestão do Banco de Dados
 *   **Cascade Delete:** A exclusão de um cenário deve remover automaticamente todas as fábricas, armazéns, rotas, previsões e resultados vinculados a ele.
 *   **Hard Reset:** Função para limpar integralmente o banco de dados e reiniciar sequências de identidade.
+
+---
+
+## 6. Assistente de Dados via Model Context Protocol (MCP)
+Para estender os recursos de análise de dados e permitir tomadas de decisão guiadas por inteligência artificial (LLMs), o sistema fornece um **MCP Server** baseado no framework `fastmcp`.
+
+### 6.1. Ferramentas Disponibilizadas (MCP Tools)
+O servidor MCP expõe as seguintes funções como ferramentas para consumo via LLM:
+1.  `list_scenarios`: Lista todos os cenários, identificando o cenário oficial e simulações.
+2.  `get_daily_movements`: Retorna transbordos diários detalhados com filtros de data e rota.
+3.  `get_monthly_summary`: Agrupa volumes (Ton/Sc) e custos de frete consolidados por mês.
+4.  `get_factories_summary`: Relatório mensal de recebimento, esmagamento, saldo e excedentes de silos das fábricas.
+5.  `get_warehouses_summary`: Relatório mensal de expedição, vendas, saldo e excedentes dos armazéns.
+6.  `compare_factories`: Agrega dados de capacidade e aponta picos e gargalos de esmagamento nas fábricas.
+7.  `compare_warehouses`: Agrega dados de expedição e aponta picos de gargalo de escoamento nos armazéns.
+8.  `get_stock_excesses_report`: Varre todas as unidades e meses disparando alertas quando há estouro de capacidade estática (`excedente > 0`).
+
+### 6.2. Arquitetura de Comunicação
+O servidor MCP se comunica utilizando o protocolo JSON-RPC sobre transporte STDIO (para integrações de desktop locais como Claude Desktop) ou transporte HTTP/SSE (para integrações remotas e extensões de editores de código). Os dados de retorno são sempre estruturados em JSON bruto para dar liberdade ao LLM cliente de tabular, processar ou analisar as informações.
