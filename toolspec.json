@@ -1,0 +1,153 @@
+{
+  "tools": [
+    {
+      "name": "list_scenarios",
+      "description": "Lista todos os cenarios de simulacao cadastrados no sistema,\nindicando qual e o cenario oficial e o seu ID correspondente.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_daily_movements",
+      "description": "Retorna a lista detalhada de movimentacoes diarias de soja para um cenario especifico.\nPermite filtrar por intervalo de datas (AAAA-MM-DD), ID do armazem de origem (origin_id),\nID da fabrica de destino (destination_id). Retorna o volume em Ton, Sc (sacas) e Custo Financeiro.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          },
+          "start_date": {
+            "default": null,
+            "type": "string"
+          },
+          "end_date": {
+            "default": null,
+            "type": "string"
+          },
+          "origin_id": {
+            "default": null,
+            "type": "integer"
+          },
+          "destination_id": {
+            "default": null,
+            "type": "integer"
+          },
+          "limit": {
+            "default": 150,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_monthly_summary",
+      "description": "Retorna o resumo consolidado por mes (e detalhamento por rota) das movimentacoes.\nUtil para analise mensal do volume movimentado em toneladas, sacas e o custo total de frete.\nIntervalos de data opcionais no formato AAAA-MM-DD.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          },
+          "start_date": {
+            "default": null,
+            "type": "string"
+          },
+          "end_date": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_factories_summary",
+      "description": "Exibe o resumo mensal de operacoes de todas as fabricas (unidades de esmagamento)\ncadastradas no cenario especificado. Inclui dados de recebimento do produtor,\nrecebimento via transbordo, volume esmagado, saldo de estoque final no mes, \ncapacidade estatica maxima e volume excedente armazenado fora da capacidade.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_warehouses_summary",
+      "description": "Exibe o resumo mensal de operacoes de todos os armazens (origens) cadastrados\nno cenario especificado. Inclui dados de recebimento de produtor local, \nenvio via transbordo para fabricas, vendas locais efetuadas, saldo de estoque\nfinal no mes, capacidade estatica e volume excedente (transbordado/fora da capacidade).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "compare_factories",
+      "description": "Agrega as metricas de desempenho e gargalos para todas as fabricas no cenario.\nPermite ao LLM comparar facilmente quais fabricas tiveram maior esmagamento total,\npicos de estoque maximos registrados ao longo do cenario, volume total de recebimento,\ne a quantidade total acumulada de excedentes (risco de ruptura/armazenamento incorreto).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "compare_warehouses",
+      "description": "Agrega as metricas de desempenho e escoamento para todos os armazens no cenario.\nPermite comparar quais armazens receberam mais soja direta do produtor, quais\nescoaram o maior volume via transbordo, as vendas totais acumuladas e os maiores\npicos de estoque (gargalos de estocagem) e excedentes gerados no cenario.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_stock_excesses_report",
+      "description": "Gera um relatorio analitico contendo todos os alertas de estouro de capacidade estatica \n(excedentes de estoque > 0) para armazens e fabricas ao longo dos meses do cenario.\nIdentifica com precisao quais meses e locais sofreram com sobrecarga de estocagem.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "scenario_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "type": "object"
+      }
+    }
+  ]
+}

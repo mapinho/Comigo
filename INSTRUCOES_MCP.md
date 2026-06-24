@@ -124,8 +124,14 @@ Para implantar e disponibilizar a solução para clientes e outros consultores e
     https://comigo.vectorconsulting.com.br/sse
     ```
 
-4.  **Registro no Vertex AI / Gemini Enterprise:**
-    No painel do Google Cloud Platform (Vertex AI Agent Builder), crie um novo agente ou extensão do tipo **MCP** e aponte o endpoint para a URL pública segura acima. O Gemini Pro no ambiente corporativo se comunicará nativamente e em tempo real com os dados de transbordo de soja da Comigo.
+4.  **Registro no Vertex AI / Gemini Enterprise (Manual / Upload):**
+    No painel do Google Cloud Platform (Vertex AI Agent Builder), ao criar ou registrar um novo servidor MCP, o painel do Google Cloud exige que você declare a especificação das ferramentas utilizando o formato padrão de esquemas do MCP.
+    *   **Por que o botão "Import Tools" falha com 405?** O console do GCP tenta efetuar uma requisição de cabeçalhos padrão HTTP no endpoint `/sse`. Como o canal de Server-Sent Events (SSE) é um canal contínuo e restrito a conexões estáveis, ele rejeita chamadas HTTP comuns gerando o erro *405 Method Not Allowed*.
+    *   **Como Resolver (Procedimento Recomendado):**
+        1. Localize o arquivo **`toolspec.json`** gerado automaticamente na raiz do repositório do projeto Comigo. Ele contém o esquema exato de objetos de ferramenta compatível com os padrões de especificação exigidos pelo Google Cloud.
+        2. No painel de registro do MCP no GCP Vertex AI, selecione a opção de **Upload de Especificação** ou colar payload manual e carregue/cole o conteúdo completo do arquivo `toolspec.json`.
+        3. Aponte a URL do endpoint para a URL pública segura: `https://comigo.vectorconsulting.com.br/sse`.
+        4. O Gemini Pro no ambiente corporativo se comunicará nativamente e em tempo real com os dados de transbordo de soja da Comigo de forma perfeitamente autenticada e integrada.
 
 ---
 
