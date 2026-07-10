@@ -9,3 +9,4 @@ ortools
 fastmcp
 mcp[cli]
 mcp
+google-genai

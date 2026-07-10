@@ -20,7 +20,7 @@ def main():
 
     st.title("Sistema de Planejamento de Transbordo - Comigo")
     
-    menu = ["Dashboard", "Dados & Cenários", "Carga de Dados", "Otimização"]
+    menu = ["Dashboard", "Dados & Cenários", "Carga de Dados", "Otimização", "Assistente de IA"]
     choice = st.sidebar.selectbox("Menu", menu)
     
     session = init_db()
@@ -498,6 +498,72 @@ def main():
         st.info("A otimização agora deve ser executada diretamente na tela 'Dados & Cenários' para o cenário desejado.")
         if st.button("Ir para Dados & Cenários"):
             st.rerun()
+
+    elif choice == "Assistente de IA":
+        st.subheader("🤖 Assistente de Inteligência Logística - COMIGO")
+        st.write("Pergunte qualquer coisa sobre cenários, volumes movimentados, custos, previsões e gargalos de capacidade estática.")
+        
+        import ai_assistant
+        
+        # Verifica se a chave de API está configurada
+        if not ai_assistant.check_api_key():
+            st.error("🔑 A variável de ambiente `GEMINI_API_KEY` não está configurada.")
+            st.info("Para utilizar o Assistente de IA, configure a chave de API do Gemini no seu arquivo `.env` local como `GEMINI_API_KEY=sua_chave`.")
+        else:
+            # Inicializa a sessão do chat do Gemini
+            if ai_assistant.init_chat_session():
+                # Botões de perguntas sugeridas/rápidas
+                st.write("**Sugestões de Perguntas:**")
+                col_p1, col_p2, col_p3 = st.columns(3)
+                
+                sugestao_selecionada = None
+                with col_p1:
+                    if st.button("📊 Quais cenários existem?", use_container_width=True):
+                        sugestao_selecionada = "Quais cenários de simulação estão cadastrados no sistema?"
+                with col_p2:
+                    if st.button("🚨 Quais os gargalos no Oficial?", use_container_width=True):
+                        sugestao_selecionada = "Quais são os gargalos de estoque e alertas de capacidade estática no cenário Oficial?"
+                with col_p3:
+                    if st.button("💵 Resumo do cenário Oficial", use_container_width=True):
+                        sugestao_selecionada = "Dê um resumo mensal consolidado das movimentações, volumes e custos totais de frete do cenário Oficial."
+                
+                # Inicializa a lista de mensagens no state se não existir
+                if "messages" not in st.session_state:
+                    st.session_state.messages = []
+                
+                # Botão para limpar histórico do chat na barra lateral
+                if st.sidebar.button("🧹 Limpar Conversa"):
+                    ai_assistant.clear_chat_session()
+                    st.rerun()
+                
+                # Exibe mensagens anteriores do histórico
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+                
+                # Determina a entrada do chat (seja do input manual ou clique de sugestão)
+                user_input = st.chat_input("Digite sua dúvida sobre a logística...")
+                
+                if sugestao_selecionada:
+                    user_input = sugestao_selecionada
+                
+                # Processa o envio da mensagem
+                if user_input:
+                    # Adiciona e exibe a mensagem do usuário
+                    st.session_state.messages.append({"role": "user", "content": user_input})
+                    with st.chat_message("user"):
+                        st.markdown(user_input)
+                    
+                    # Gera a resposta do assistente com spinner
+                    with st.chat_message("assistant"):
+                        response_placeholder = st.empty()
+                        with st.spinner("Analisando dados logísticos e pensando..."):
+                            response_text = ai_assistant.send_message_to_assistant(user_input)
+                            response_placeholder.markdown(response_text)
+                    
+                    # Salva a resposta no histórico
+                    st.session_state.messages.append({"role": "assistant", "content": response_text})
+                    st.rerun()
 
     session.close()
 
